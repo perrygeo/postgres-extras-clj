@@ -42,7 +42,7 @@ jobs:
         run: clojure -X:test
         
       - name: Build jar
-        run: clj -T:build jar
+        run: clojure -T:build jar
 
       # TODO 
       # - name: Linting
