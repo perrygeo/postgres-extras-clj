@@ -3,7 +3,7 @@
 A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 
 ```clojure
-perrygeo/postgres-extras-clj {:mvn/version "0.1.3"}
+perrygeo/postgres-extras-clj {:mvn/version "0.1.4"}
 ```
 
 * [Clojar Releases](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
