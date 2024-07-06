@@ -39,16 +39,16 @@ jobs:
           key: cljdeps-${{ hashFiles('deps.edn') }}
           restore-keys: cljdeps-
 
-      - name: Step 1: Linting
+      - name: Linting
         run: clj-kondo --lint src test examples --debug
 
-      - name: Step 2: Run tests
+      - name: Run tests
         run: clojure -X:test
         
-      - name: Step 3: Build jar
+      - name: Build jar
         run: clojure -T:build jar
 
-      - name: Step 4: Push to clojars if tagged
+      - name: Push to clojars if tagged
         if: contains(github.ref, '/tags/v')
         run: clojure -T:build deploy
 
