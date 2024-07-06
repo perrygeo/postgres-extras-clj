@@ -2,8 +2,13 @@
 
 A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 
-* releases
-* documentation
+```clojure
+perrygeo/postgres-extras-clj {:mvn/version "0.1.2"}
+```
+
+* [releases](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
+* [code](https://github.com/perrygeo/postgres-extras-clj)
+* [documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
 * testing
 
 ## 🐘 Motivation
@@ -92,13 +97,6 @@ returns a map, with keywords mirroring the above functions.
 
 Use the `(diagnose (read-stats db))` and `(diagnose-warnings (read-stats db))` functions
 to evaluate the stats according to a set of heuristics. 
-
-## Install
-
-
-```clojure
-perrygeo/postgres-extras-clj {:mvn/version "0.1.0"}
-```
 
 
 ## Usage

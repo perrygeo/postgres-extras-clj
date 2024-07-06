@@ -1,0 +1,50 @@
+name: test postgres-extras-clj
+
+on: [push]
+
+jobs:
+
+  clojure:
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Prepare java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '8'
+
+
+      - name: Install clojure tools
+        uses: DeLaGuardo/setup-clojure@12.5
+        with:
+          cli: 1.10.1.693              # Clojure CLI based on tools.deps
+          clj-kondo: 2022.05.31        # Clj-kondo
+          cljfmt: 0.10.2               # cljfmt
+          
+      - name: Cache clojure dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+          key: cljdeps-${{ hashFiles('deps.edn') }}
+          restore-keys: cljdeps-
+
+      - name: Run tests
+        run: clojure -X:test
+        
+      - name: Build jar
+        run: clojure -T:build jar
+
+      # - name: Push to clojars
+      #   run: cljfmt --version
+
