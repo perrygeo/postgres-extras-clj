@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          fetch-dep: 0
+          fetch-depth: 0
 
       - name: Prepare java
         uses: actions/setup-java@v3
