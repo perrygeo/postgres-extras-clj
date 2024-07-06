@@ -20,14 +20,15 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
+          # Be conservative with Java version
           java-version: '8'
 
       - name: Install clojure tools
         uses: DeLaGuardo/setup-clojure@12.5
         with:
+          # Clojure is stable enough to run off latest
           cli: 'latest'
-          # clj-kondo: 2022.05.31        # Clj-kondo
-          # cljfmt: 0.10.2               # cljfmt
+          clj-kondo: 'latest'
           
       - name: Cache clojure dependencies
         uses: actions/cache@v3
@@ -38,14 +39,16 @@ jobs:
           key: cljdeps-${{ hashFiles('deps.edn') }}
           restore-keys: cljdeps-
 
-      - name: Run tests
+      - name: Step 1: Linting
+        run: clj-kondo --lint src test examples --debug
+
+      - name: Step 2: Run tests
         run: clojure -X:test
         
-      - name: Build jar
+      - name: Step 3: Build jar
         run: clojure -T:build jar
 
-      # TODO 
-      # - name: Linting
-      # - name: Push to clojars
-      #   run: ... 
+      - name: Step 4: Push to clojars if tagged
+        if: contains(github.ref, '/tags/v')
+        run: clojure -T:build deploy
 
