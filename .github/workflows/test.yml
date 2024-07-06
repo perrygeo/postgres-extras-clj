@@ -40,10 +40,10 @@ jobs:
           restore-keys: cljdeps-
 
       - name: Run tests
-        run: clojure -X:test
+        run: clj -X:test
         
       - name: Build jar
-        run: clojure -T:build jar
+        run: clj -T:build jar
 
       # - name: Push to clojars
       #   run: cljfmt --version
