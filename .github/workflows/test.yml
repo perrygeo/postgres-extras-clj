@@ -22,13 +22,12 @@ jobs:
           distribution: 'zulu'
           java-version: '8'
 
-
       - name: Install clojure tools
         uses: DeLaGuardo/setup-clojure@12.5
         with:
-          cli: 1.10.1.693              # Clojure CLI based on tools.deps
-          clj-kondo: 2022.05.31        # Clj-kondo
-          cljfmt: 0.10.2               # cljfmt
+          cli: 'latest'
+          # clj-kondo: 2022.05.31        # Clj-kondo
+          # cljfmt: 0.10.2               # cljfmt
           
       - name: Cache clojure dependencies
         uses: actions/cache@v3
@@ -40,11 +39,13 @@ jobs:
           restore-keys: cljdeps-
 
       - name: Run tests
-        run: clj -X:test
+        run: clojure -X:test
         
       - name: Build jar
         run: clj -T:build jar
 
+      # TODO 
+      # - name: Linting
       # - name: Push to clojars
-      #   run: cljfmt --version
+      #   run: ... 
 
