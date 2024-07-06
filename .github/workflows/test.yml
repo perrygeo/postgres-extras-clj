@@ -52,5 +52,8 @@ jobs:
 
       - name: Push to clojars if tagged
         if: contains(github.ref, '/tags/v')
+        env:
+          CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          CLOJARS_PASSWORD: ${{ secrets.CLOJARS_PASSWORD }}
         run: clojure -T:build deploy
 
