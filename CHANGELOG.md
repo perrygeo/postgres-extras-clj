@@ -4,6 +4,16 @@ This change log follows the conventions of [keepachangelog.com](http://keepachan
 
 ## Unreleased
 
+## [0.1.6] - 2024-07-07
+
+### Fix
+
+- Respect :limits for all stats
+
+### Changes
+
+- Change diagnostic keyword from :desc to :onfalse for clarity
+
 ## [0.1.5] - 2024-07-06
 
 ### Fixed
