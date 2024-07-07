@@ -840,9 +840,9 @@ SELECT
     vacuum_settings.relname AS table,
     to_char(psut.last_vacuum, 'YYYY-MM-DD HH24:MI') AS last_vacuum,
     to_char(psut.last_autovacuum, 'YYYY-MM-DD HH24:MI') AS last_autovacuum,
-    to_char(pg_class.reltuples, '9G999G999G999') AS rowcount,
-    to_char(psut.n_dead_tup, '9G999G999G999') AS dead_rowcount,
-    to_char(autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor::numeric * pg_class.reltuples), '9G999G999G999') AS autovacuum_threshold,
+    pg_class.reltuples AS rowcount,
+    psut.n_dead_tup AS dead_rowcount,
+    autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor::numeric * pg_class.reltuples) AS autovacuum_threshold,
     CASE WHEN autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor::numeric * pg_class.reltuples) < psut.n_dead_tup THEN
         'yes'
     END AS expect_autovacuum
