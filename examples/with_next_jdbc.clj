@@ -1,13 +1,11 @@
 (ns with-next-jdbc
-  "This is a demonstration of postgres-extras-clj
-  with the next.jdbc adapter."
+  "This is a demonstration of postgres-extras-clj with the next.jdbc adapter."
   (:require
    [hugsql.core :as hugsql]
    [hugsql.adapter.next-jdbc :as next-adapter]
    [next.jdbc :as jdbc]
    [postgres-extras-clj.core :as pgex]))
 
-; Assumes a deps.edn with
 ; {:deps {com.layerware/hugsql {:mvn/version "0.5.3"}
 ;         com.layerware/hugsql-adapter-next-jdbc {:mvn/version "0.5.3"}
 ;         org.clojure/clojure {:mvn/version "1.11.2"}
