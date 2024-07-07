@@ -86,7 +86,9 @@
                :unused-indexes (unused-indexes db {:min_scans 50})
                :vacuum-stats (vacuum-stats db)}]
     (into {} (map (fn [[k v]]
-                    [k (take limit v)])
+                    [k (if (nil? v)
+                         nil
+                         (take limit v))])
                   stats))))
 
 ;;;
