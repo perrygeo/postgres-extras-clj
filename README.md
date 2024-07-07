@@ -6,7 +6,7 @@ A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 perrygeo/postgres-extras-clj {:mvn/version "0.1.5"}
 ```
 
-* [Clojar Releases](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
+* [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
 * [Github](https://github.com/perrygeo/postgres-extras-clj)
 * [Documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
 * [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
@@ -248,7 +248,7 @@ To create your own diagnostics:
 (def unrealistic-expectations
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.999)
-    :desc "The cache hit ratio is not as insanely high as I'd like."
+    :onfalse "The cache hit ratio is not as insanely high as I'd like."
     :idfn :name}})
 
 (doseq [w (pgex/diagnose-warnings
