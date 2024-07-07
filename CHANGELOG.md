@@ -4,9 +4,14 @@ This change log follows the conventions of [keepachangelog.com](http://keepachan
 
 ## Unreleased
 
-## [0.1.0] - 2024-07-09
+## [0.1.5] - 2024-07-06
 
-### Added
+### Fixed
+
+- Correct :call
+- Bug fix :null-indexes logic
+
+## [0.1.4] - 2024-07-06
 
 - Initial release.
 
