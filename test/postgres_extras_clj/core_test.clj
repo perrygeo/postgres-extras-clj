@@ -159,7 +159,7 @@
     ; this just confirms that they are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 8 (count (keys (pgex/read-data-dictionary db))))))
+    (is (= 9 (count (keys (pgex/read-data-dictionary db))))))
 
   ;
   ; TODO test individually
