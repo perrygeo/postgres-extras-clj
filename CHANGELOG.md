@@ -7,13 +7,14 @@ This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
 ## Unreleased
 
+## [0.1.10] - 2024-07-07
+
 ### Fix
 
 - Add :indexes to data dictionary map
 - Declare hugsql functions to make names explicit; clj_kondo is happy
 
-
-## [0.1.8] - 2024-07-07
+## [0.1.8] REVOKED, do not use - 2024-07-07
 
 ### Fix
 
