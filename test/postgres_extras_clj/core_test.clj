@@ -60,7 +60,6 @@
      :ratio 0.45}]})
 
 (deftest smoketest
-  #_{:clj-kondo/ignore [:unresolved-var]}
   (testing
    "Healthy?"
     (is (str/starts-with? (:version (pgex/health-check db)) "PostgreSQL"))))
@@ -102,12 +101,10 @@
            (filter (fn [[_ v]] (nil? v))
                    (pgex/read-stats db)))))
 
-  #_{:clj-kondo/ignore [:unresolved-var]}
   (testing
    "Even an 'empty' postgres database isn't really empty."
     (is (> (count (pgex/tables db)) 25)))
 
-  #_{:clj-kondo/ignore [:unresolved-var]}
   (testing
    "active database connections, at least one since we're asking."
     (is (some? (pgex/connections db))))
@@ -144,7 +141,6 @@
   ; | (pgex/vacuum-stats db) | Dead rows and whether an automatic vacuum is expected to be triggered |
   )
 
-#_{:clj-kondo/ignore [:unresolved-var]}
 (deftest data-dict
 
   (testing
@@ -163,7 +159,7 @@
     ; this just confirms that they are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 8 (count (keys (pgex/read-data-dictionary db))))))
+    (is (= 9 (count (keys (pgex/read-data-dictionary db))))))
 
   ;
   ; TODO test individually
@@ -178,7 +174,6 @@
   ; | (views db) | List all view objects in current database |
   )
 
-#_{:clj-kondo/ignore [:unresolved-var]}
 (comment
   (pgex/tables db)
   (pgex/views db)

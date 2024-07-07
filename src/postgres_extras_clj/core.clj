@@ -10,8 +10,6 @@
    
    Queries ported to HugSQL syntax to access them
    as Clojure data structures."
-  ;; :-( TODO kondo doesn't know about hugsql macros
-  {:clj-kondo/ignore [:unresolved-symbol]}
   (:require
    [clojure.string :as str]
    [clojure.tools.logging :as log]
@@ -43,6 +41,43 @@
 
 (hugsql/def-db-fns "sql/postgres_extras.sql")
 (hugsql/def-db-fns "sql/data_dictionary.sql")
+(declare columns
+         databases
+         functions
+         indexes
+         schemas
+         partition-children
+         partition-parents
+         tables
+         views
+         all-locks
+         bloat
+         blocking
+         cache-hit
+         calls
+         connections
+         db-settings
+         duplicate-indexes
+         extensions
+         health-check
+         index-cache-hit
+         index-size
+         index-usage
+         kill-all!
+         locks
+         long-running-queries
+         mandelbrot
+         null-indexes
+         outliers
+         records-rank
+         seq-scans
+         table-cache-hit
+         table-indexes-size
+         table-size
+         total-index-size
+         total-table-size
+         unused-indexes
+         vacuum-stats)
 
 ;;;
 ;;; Stats
@@ -103,6 +138,7 @@
   {:databases (databases db)
    :columns   (columns db)
    :functions (functions db)
+   :indexes   (indexes db)
    :schemas   (schemas db)
    :tables    (tables db)
    :views     (views db)
