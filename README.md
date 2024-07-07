@@ -3,7 +3,7 @@
 A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 
 ```clojure
-perrygeo/postgres-extras-clj {:mvn/version "0.1.4"}
+perrygeo/postgres-extras-clj {:mvn/version "0.1.5"}
 ```
 
 * [Clojar Releases](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
@@ -20,19 +20,25 @@ allow us to monitor things like query performance, connection management,
 index efficiency, disk usage, and MVCC bloat. But accessing that information
 requires some arcane knowledge and reasonably hardcore SQL skills.
 
-This project was inspired by the Rustproof Labs' [pgdd](https://github.com/rustprooflabs/pgdd) extension
-and by the Phoenix web framework which ships with a developer-centric and postgres-specific
-dashboard based on [ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras/tree/main).
+This project was inspired by the rustprooflabs [pgdd](https://github.com/rustprooflabs/pgdd)
+extension and by the phoenix web framework which ships with a developer-centric,
+postgres-specific dashboard based on [ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras/tree/main).
 Both projects demonstrate that high-level database tooling
 can, and probably should, be built on top of the system catalogs.
+Understanding your database isn't optional.
 
 `postgres-extras-clj` provides this missing toolkit for Clojure developers.
-The SQL lives in proper [.sql files](resources/sql/),
-annotated with [HugSQL](https://www.hugsql.org)
-macro magic to turn them into clojure fns.
-Instead of a web interface, postgres extension, or CLI,
+
+The SQL logic lives in [`resources/sql/*.sql`](resources/sql/) and is
+formatted with pgFormat for consistency. SQL is 
+annotated with [HugSQL](https://www.hugsql.org) comments to turn them
+into clojure fns via macro magic. Instead of a web interface or postgres extension,
 `postgres-extras-clj.core` provides a clojure namespace with a few dozen useful 
-functions that **return diagnostics as plain data structures**.
+functions that query system tables and **return diagnostics as plain data structures**. 
+The goal is to run with limited, SELECT-only privileges
+of system schemas and tables (with a few noted exceptions).
+
+All you need is a JDBC connection and a REPL.
 
 
 ### 📚 Data Dictionary
@@ -113,12 +119,10 @@ Run `clj -M:dev` then evaluate the following forms
 (require '[hugsql.adapter.next-jdbc :as next-adapter])
 (require '[next.jdbc :as jdbc])
 
-;; define a datasource 
 (def db
   (jdbc/get-datasource
-   {:jdbcUrl "jdbc:postgresql://localhost:5432/main?user=postgres&password=password"}))
+   "jdbc:postgresql://localhost:5432/main?user=postgres&password=password"))
 
-;; and tell hugsql about it
 (hugsql/set-adapter! (next-adapter/hugsql-adapter-next-jdbc))
 ```
 
@@ -163,8 +167,7 @@ Generate a data dictionary summarizing all major objects in your database.
 ;  :bytes_per_row 16384}
 ```
 
-Create a full map of diagnostic stats. Based on 
-[ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras).
+Create a full map of diagnostic stats. 
 
 ```clojure
 (def stats (pgex/read-stats db))
@@ -285,12 +288,11 @@ Assumes that `clj -T:build jar` has already been run.
 Copyright © 2024 Matthew T. Perry (`perrygeo`). 
 Distributed under the MIT license.
 
-The credit for the SQL query logic goes entirely
+The credit for the SQL query logic goes
 to the fantastic work done by these three projects:
 
   * https://github.com/heroku/heroku-pg-extras
   * https://github.com/pawurb/ecto_psql_extras
   * https://github.com/rustprooflabs/pgdd
 
-Their licenses (all MIT) are included in the appropriate
-files as SQL comments.
+Their licenses (all MIT) are included in the SQL files.
