@@ -2,9 +2,12 @@
 All notable changes to this project will be documented in this file. 
 This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+This project uses MAJOR.MINOR.COMMIT-COUNT versioning
+
+
 ## Unreleased
 
-## [0.1.6] - 2024-07-07
+## [0.1.8] - 2024-07-07
 
 ### Fix
 
