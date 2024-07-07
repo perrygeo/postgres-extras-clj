@@ -145,6 +145,7 @@ Generate a data dictionary summarizing all major objects in your database.
 ; (:databases
 ;  :columns
 ;  :functions
+;  :indexes
 ;  :schemas
 ;  :tables
 ;  :views 

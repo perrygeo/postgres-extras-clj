@@ -25,8 +25,6 @@
 ;; tell hugsql about it
 (hugsql/set-adapter! (next-adapter/hugsql-adapter-next-jdbc))
 
-;; TODO kondo doesn't know about hugsql macros
-#_{:clj-kondo/ignore [:unresolved-var]}
 (comment
 
   (pgex/health-check db)
@@ -39,6 +37,7 @@
   ; (:databases
   ;  :columns
   ;  :functions
+  ;  :indexes 
   ;  :schemas
   ;  :tables
   ;  :views 
@@ -120,7 +119,7 @@
   ;; vital if you need to take a heavily-used database
   ;; down for maintenance or emergency. Needless to say,
   ;; use with caution!
-  #_(kill-all! db)
+  (pgex/kill-all! db)
 
   ;; Query and and print all default diagnostics
   (doseq [d (pgex/diagnose (pgex/read-stats db))]
