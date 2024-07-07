@@ -42,7 +42,7 @@
 (def test-fns
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.985)
-    :desc "Table sees high block IO relative to buffer cache hit"
+    :onfalse "Table sees high block IO relative to buffer cache hit"
     :idfn :name}})
 
 (defn mock-stats-buffered []

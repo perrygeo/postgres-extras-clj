@@ -248,7 +248,7 @@ To create your own diagnostics:
 (def unrealistic-expectations
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.999)
-    :desc "The cache hit ratio is not as insanely high as I'd like."
+    :onfalse "The cache hit ratio is not as insanely high as I'd like."
     :idfn :name}})
 
 (doseq [w (pgex/diagnose-warnings

@@ -51,40 +51,43 @@
 (defn read-stats
   "Query postgres instance for all available diagnostic information.
   This will invoke all of the public, read-only diagnostic queries in the namespace.
-  Based on ecto_psql_extras.
+
   The :outliers and :calls stats require enabling the pg-stat-statements extension,
   otherwise they will log a warning and return nil."
   [db & {:keys [limit] :or {limit 10}}]
-  {:all-locks (all-locks db)
-   :bloat (take limit (bloat db))
-   :blocking (blocking db)
-   :cache-hit (cache-hit db)
-   :calls (try
-            (calls db {:limit limit})
-            (catch PSQLException e (log/warn (format-psql-exc e))))
-   :connections (connections db)
-   :db-settings (db-settings db)
-   :duplicate-indexes (duplicate-indexes db)
-   :extensions (extensions db)
-   :health-check (health-check db)
-   :index-cache-hit (index-cache-hit db)
-   :index-size (index-size db)
-   :index-usage (index-usage db)
-   :locks (locks db)
-   :long-running-queries (long-running-queries db)
-   :null-indexes (null-indexes db)
-   :outliers (try
-               (outliers db {:limit limit})
-               (catch PSQLException e (log/warn (format-psql-exc e))))
-   :records-rank (records-rank db)
-   :seq-scans (seq-scans db)
-   :table-cache-hit (table-cache-hit db)
-   :table-indexes-size (table-indexes-size db)
-   :table-size (table-size db)
-   :total-index-size (total-index-size db)
-   :total-table-size (total-table-size db)
-   :unused-indexes (unused-indexes db {:min_scans 50})
-   :vacuum-stats (vacuum-stats db)})
+  (let [stats {:all-locks (all-locks db)
+               :bloat (bloat db)
+               :blocking (blocking db)
+               :cache-hit (cache-hit db)
+               :calls (try
+                        (calls db {:limit limit})
+                        (catch PSQLException e (log/warn (format-psql-exc e))))
+               :connections (connections db)
+               :db-settings (db-settings db)
+               :duplicate-indexes (duplicate-indexes db)
+               :extensions (extensions db)
+               :health-check (health-check db)
+               :index-cache-hit (index-cache-hit db)
+               :index-size (index-size db)
+               :index-usage (index-usage db)
+               :locks (locks db)
+               :long-running-queries (long-running-queries db)
+               :null-indexes (null-indexes db)
+               :outliers (try
+                           (outliers db {:limit limit})
+                           (catch PSQLException e (log/warn (format-psql-exc e))))
+               :records-rank (records-rank db)
+               :seq-scans (seq-scans db)
+               :table-cache-hit (table-cache-hit db)
+               :table-indexes-size (table-indexes-size db)
+               :table-size (table-size db)
+               :total-index-size (total-index-size db)
+               :total-table-size (total-table-size db)
+               :unused-indexes (unused-indexes db {:min_scans 50})
+               :vacuum-stats (vacuum-stats db)}]
+    (into {} (map (fn [[k v]]
+                    [k (take limit v)])
+                  stats))))
 
 ;;;
 ;;; Data Dictionary
@@ -93,8 +96,7 @@
 (defn read-data-dictionary
   "Create a data dictionary summarizing all major objects
   in your PostgreSQL database. Respects SQL COMMMENTS,
-  thus serves as a human-readable description of your data model.
-  Based on pgdd."
+  thus serves as a human-readable description of your data model."
   [db]
   {:databases (databases db)
    :columns   (columns db)
@@ -111,28 +113,30 @@
 
 (def default-diagnostic-fns
   "Defines the critical queries and their cutoffs for the `diagnose`
-  function. The value is a map containing a predicate fn to test against
-  each result, and a description of the problem if it fails."
+  function. The value is a map containing a predicate fn (true = pass)
+  to test against each result, and a description of the problem if false."
   {:duplicate-indexes {:pred  #(identity %)
-                       :desc "Duplicate indexes detected"
+                       :onfalse "Duplicate indexes detected"
                        :idfn #(identity %)}
    :bloat             {:pred #(< (:bloat %) 10)
-                       :desc "Bloated tables"
+                       :onfalse "Bloated tables"
                        :idfn #(str (:schemaname %) "." (:object_name %))}
    :index-cache-hit   {:pred #(or (> (:ratio %) 0.985) (< (:block_reads %) 10))
-                       :desc "Index sees high block IO relative to buffer cache hit"
+                                                       ;; excluding rarely used tables
+                       :onfalse "Index sees too much block IO relative to buffer cache hit"
                        :idfn #(str (:schema %) "." (:name %))}
-   :null-indexes      {:pred  #(or (> (:null_frac_percent %) 50) (< (:size_mb %) 1))
-                       :desc "Null indexes too high"
+   :null-indexes      {:pred  #(or (< (:null_frac_percent %) 50) (< (:size_mb %) 1))
+                       :onfalse "Index has too many nulls"          ;; excluding small tables
                        :idfn :index}
    :outliers          {:pred #(< (:prop_exec_time %) 0.50)
-                       :desc "Detected slow query"
+                       :onfalse "Detected slow query"
                        :idfn :query}
    :table-cache-hit   {:pred #(or (> (:ratio %) 0.985) (< (:block_reads %) 10))
-                       :desc "Table sees high block IO relative to buffer cache hit"
+                                                       ;; excluding rarely used tables
+                       :onfalse "Table sees too much block IO relative to buffer cache hit"
                        :idfn #(str (:schema %) "." (:name %))}
-   :unused-indexes    {:pred #(and (< (:scans %) 20) (< (:size_bytes %) 10000000))
-                       :desc "Large unused index"
+   :unused-indexes    {:pred #(or (< (:size_bytes %) 10000000) (> (:scans %) 20))
+                       :onfalse "Large but unused index"
                        :idfn #(str (:schemaname %) "." (:object_name %))}})
 
 (defn diagnose
@@ -142,7 +146,7 @@
   Returns a flat list of result maps."
   [stats & {:keys [diagnostic-fns] :or {diagnostic-fns default-diagnostic-fns}}]
   (flatten
-   (map (fn [[k {:keys [pred desc idfn]}]]
+   (map (fn [[k {:keys [pred onfalse idfn]}]]
           (map #(let [ret (pred %)
                       ident (idfn %)]
                   {:diagnostic k
@@ -152,7 +156,7 @@
                                  (if ret
                                    (str "✓  Passed " k " " (tidy-report ident))
                                    (str "! Warning " k " " (tidy-report ident)
-                                        " " desc "\n" %)))
+                                        " " onfalse "\n" %)))
                    :data       (when (not ret) %)})
                (get stats k)))
         diagnostic-fns)))
