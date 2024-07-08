@@ -4,9 +4,9 @@ This change log follows the conventions of [keepachangelog.com](http://keepachan
 
 This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
+## [0.1.17] - 2024-07-08
 
-## Unreleased
-
+- Declare fns before hugsql macros to get proper docstrings
 
 ## [0.1.15] - 2024-07-08
 
