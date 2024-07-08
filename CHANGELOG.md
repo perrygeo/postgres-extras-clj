@@ -7,6 +7,16 @@ This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
 ## Unreleased
 
+## [0.1.12] - 2024-07-08
+
+### Fix
+
+- vacuum cols should be numeric, not string
+
+### Changes
+
+- remove healthcheck from read-stats, doesn't fit the record structure.
+
 ## [0.1.10] - 2024-07-07
 
 ### Fix
