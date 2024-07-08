@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.github.perrygeo</groupId>
   <artifactId>postgres-extras-clj</artifactId>
-  <version>0.1.12</version>
+  <version>0.1.15</version>
   <name>perrygeo/postgres-extras-clj</name>
   <description>
     A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
@@ -24,7 +24,7 @@
     <url>https://github.com/perrygeo/postgres-extras-clj</url>
     <connection>scm:git:git://github.com/perrygeo/postgres-extras-clj.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/perrygeo/postgres-extras-clj.git</developerConnection>
-    <tag>v0.1.12</tag>
+    <tag>v0.1.15</tag>
   </scm>
   <dependencies>
     <dependency>
