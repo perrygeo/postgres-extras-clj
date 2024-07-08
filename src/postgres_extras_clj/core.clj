@@ -101,7 +101,6 @@
                :db-settings (db-settings db)
                :duplicate-indexes (duplicate-indexes db)
                :extensions (extensions db)
-               :health-check (health-check db)
                :index-cache-hit (index-cache-hit db)
                :index-size (index-size db)
                :index-usage (index-usage db)
