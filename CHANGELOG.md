@@ -7,6 +7,12 @@ This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
 ## Unreleased
 
+### Changes
+
+- Remove the outlier-legacy and calls-legacy functions, which served no purpose that I could tell.
+- Changed the outliers and calls return maps to use :exec_time_ms (bigdecimal, explicit units) instead of :exec_time.
+- Similarly, changed the outliers and calls return maps with :sync_io_time_ms
+
 ## [0.1.12] - 2024-07-08
 
 ### Fix
