@@ -7,6 +7,9 @@ This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
 ## Unreleased
 
+
+## [0.1.15] - 2024-07-08
+
 ### Changes
 
 - Remove the outlier-legacy and calls-legacy functions, which served no purpose that I could tell.
@@ -30,7 +33,7 @@ This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 - Add :indexes to data dictionary map
 - Declare hugsql functions to make names explicit; clj_kondo is happy
 
-## [0.1.8] REVOKED, do not use - 2024-07-07
+## [0.1.8] - 2024-07-07
 
 ### Fix
 
