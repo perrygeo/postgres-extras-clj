@@ -87,7 +87,6 @@ These are valuable for looking at your database through an operations or DBA len
 | `long-running-queries` | All queries longer than the threshold by descending duration |
 | `null-indexes` | Find indexes with a high ratio of NULL values |
 | `outliers` | Queries that have longest execution time in aggregate. |
-| `outliers-legacy` | Queries that have longest execution time in aggregate |
 | `records-rank` | All tables and the number of rows in each ordered by number of rows descending |
 | `seq-scans` | Count of sequential scans by table descending by order |
 | `table-cache-hit` | Calculates your cache hit rate for reading tables |

@@ -254,10 +254,10 @@ FROM
 /* HUG_PSQL_EXTRAS: Queries that have the highest frequency of execution */
 SELECT
     query AS query,
-    interval '1 millisecond' * total_exec_time AS exec_time,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
     (total_exec_time / sum(total_exec_time) OVER ()) AS exec_time_ratio,
     calls,
-    interval '1 millisecond' * (blk_read_time + blk_write_time) AS sync_io_time
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * (blk_read_time + blk_write_time))) AS sync_io_time_ms
 FROM
     pg_stat_statements
 WHERE
@@ -273,33 +273,6 @@ WHERE
 ORDER BY
     calls DESC
 LIMIT :v:limit;
-
--- :name calls-legacy
--- :command :query
--- :result :many
--- :doc Queries that have the highest frequency of execution (legacy)
-/* HUG_PSQL_EXTRAS: Queries that have the highest frequency of execution */
-SELECT
-    query AS query,
-    interval '1 millisecond' * total_time AS exec_time,
-    (total_time / sum(total_time) OVER ()) AS exec_time_ratio,
-    calls,
-    interval '1 millisecond' * (blk_read_time + blk_write_time) AS sync_io_time
-FROM
-    pg_stat_statements
-WHERE
-    userid = (
-        SELECT
-            usesysid
-        FROM
-            pg_user
-        WHERE
-            usename = CURRENT_USER
-        LIMIT 1)
-    AND query NOT LIKE '/* HUG_PSQL_EXTRAS:%'
-ORDER BY
-    calls DESC
-LIMIT 10;
 
 -- :name connections
 -- :command :query
@@ -608,10 +581,10 @@ SELECT
 /* HUG_PSQL_EXTRAS: Queries that have longest execution time in aggregate */
 SELECT
     query AS query,
-    interval '1 millisecond' * total_exec_time AS exec_time,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
     (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
     calls,
-    interval '1 millisecond' * (blk_read_time + blk_write_time) AS sync_io_time
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * (blk_read_time + blk_write_time))) AS sync_io_time_ms
 FROM
     pg_stat_statements
 WHERE
@@ -627,33 +600,6 @@ WHERE
 ORDER BY
     total_exec_time DESC
 LIMIT :v:limit;
-
--- :name outliers-legacy
--- :command :query
--- :result :many
--- :doc Queries that have longest execution time in aggregate
-/* HUG_PSQL_EXTRAS: Queries that have longest execution time in aggregate */
-SELECT
-    query AS query,
-    interval '1 millisecond' * total_time AS exec_time,
-    (total_time / sum(total_time) OVER ()) AS prop_exec_time,
-    calls,
-    interval '1 millisecond' * (blk_read_time + blk_write_time) AS sync_io_time
-FROM
-    pg_stat_statements
-WHERE
-    userid = (
-        SELECT
-            usesysid
-        FROM
-            pg_user
-        WHERE
-            usename = CURRENT_USER
-        LIMIT 1)
-    AND query NOT LIKE '/* HUG_PSQL_EXTRAS:%'
-ORDER BY
-    total_time DESC
-LIMIT 10;
 
 -- :name records-rank
 -- :command :query

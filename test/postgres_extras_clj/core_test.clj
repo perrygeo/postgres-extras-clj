@@ -93,15 +93,6 @@
     (is (= 25 (count (keys (pgex/read-stats db))))))
 
   (testing
-   "read all stats, filter for nils."
-    ; Some stats are skipped (nil) due to
-    ; the lack of pg_stat_statements extension in test.
-    (is (= '([:outliers nil]
-             [:calls nil])
-           (filter (fn [[_ v]] (nil? v))
-                   (pgex/read-stats db)))))
-
-  (testing
    "Even an 'empty' postgres database isn't really empty."
     (is (> (count (pgex/tables db)) 25)))
 
@@ -109,38 +100,36 @@
    "active database connections, at least one since we're asking."
     (is (some? (pgex/connections db))))
 
-  ; TODO test individually? or do I just need specs for each?
-  ; some may be challenging to reproduce in a fast test case
-  ; | (pgex/kill-all! db)
-  ; | (pgex/all-locks db) | Queries with active locks |
-  ; | (pgex/blocking db) | Queries holding locks other queries are waiting to be released | 
-  ; | (pgex/bloat db) | Table and index "bloat" in your database ordered by most wasteful |
-  ; | (pgex/cache-hit db) | Index and table hit rate |
-  ; | (pgex/calls db) | Queries that have the highest frequency of execution |
-  ; | (pgex/db-settings db) | Values of selected PostgreSQL settings |
-  ; | (pgex/duplicate-indexes db) | Multiple indexes that have the same set of columns, same opclass, expression and predicate |
-  ; | (pgex/extensions db) | Available and installed extensions |
-  ; | (pgex/health-check db) | Checks the db for liveliness |
-  ; | (pgex/index-cache-hit db) | Calculates your cache hit rate for reading indexes |
-  ; | (pgex/index-size db) | The size of indexes, descending by size |
-  ; | (pgex/index-usage db) | Index hit rate (effective databases are at 99% and up) |
-  ; | (pgex/locks db) | Queries with active exclusive locks |
-  ; | (pgex/long-running-queries db) | All queries longer than the threshold by descending duration |
-  ; | (pgex/mandelbrot db) | The mandelbrot set |
-  ; | (pgex/null-indexes db) | Find indexes with a high ratio of NULL values |
-  ; | (pgex/outliers db) | Queries that have longest execution time in aggregate. |
-  ; | (pgex/outliers-legacy db) | Queries that have longest execution time in aggregate |
-  ; | (pgex/records-rank db) | All tables and the number of rows in each ordered by number of rows descending |
-  ; | (pgex/seq-scans db) | Count of sequential scans by table descending by order |
-  ; | (pgex/table-cache-hit db) | Calculates your cache hit rate for reading tables |
-  ; | (pgex/table-indexes-size db) | Total size of all the indexes on each table, descending by size |
-  ; | (pgex/table-size db) | Size of the tables (excluding indexes), descending by size |
-  ; | (pgex/total-index-size db) | Total size of all indexes in MB |
-  ; | (pgex/total-table-size db) | Size of the tables (including indexes), descending by size |
-  ; | (pgex/unused-indexes db) | Unused and almost unused indexes |
-  ; | (pgex/vacuum-stats db) | Dead rows and whether an automatic vacuum is expected to be triggered |
-  )
+  ;; The following calls are covered by the read-stats fn
+  ; (pgex/all-locks db) | Queries with active locks |
+  ; (pgex/blocking db) | Queries holding locks other queries are waiting to be released | 
+  ; (pgex/bloat db) | Table and index "bloat" in your database ordered by most wasteful |
+  ; (pgex/cache-hit db) | Index and table hit rate |
+  ; (pgex/calls db) | Queries that have the highest frequency of execution |
+  ; (pgex/db-settings db) | Values of selected PostgreSQL settings |
+  ; (pgex/duplicate-indexes db) | Multiple indexes that have the same set of columns, same opclass, expression and predicate |
+  ; (pgex/extensions db) | Available and installed extensions |
+  ; (pgex/index-cache-hit db) | Calculates your cache hit rate for reading indexes |
+  ; (pgex/index-size db) | The size of indexes, descending by size |
+  ; (pgex/index-usage db) | Index hit rate (effective databases are at 99% and up) |
+  ; (pgex/locks db) | Queries with active exclusive locks |
+  ; (pgex/long-running-queries db) | All queries longer than the threshold by descending duration |
+  ; (pgex/mandelbrot db) | The mandelbrot set |
+  ; (pgex/null-indexes db) | Find indexes with a high ratio of NULL values |
+  ; (pgex/outliers db) | Queries that have longest execution time in aggregate. |
+  ; (pgex/records-rank db) | All tables and the number of rows in each ordered by number of rows descending |
+  ; (pgex/seq-scans db) | Count of sequential scans by table descending by order |
+  ; (pgex/table-cache-hit db) | Calculates your cache hit rate for reading tables |
+  ; (pgex/table-indexes-size db) | Total size of all the indexes on each table, descending by size |
+  ; (pgex/table-size db) | Size of the tables (excluding indexes), descending by size |
+  ; (pgex/total-index-size db) | Total size of all indexes in MB |
+  ; (pgex/total-table-size db) | Size of the tables (including indexes), descending by size |
+  ; (pgex/unused-indexes db) | Unused and almost unused indexes |
+  ; (pgex/vacuum-stats db) | Dead rows and whether an automatic vacuum is expected to be triggered |
 
+  ; Not sure how we'd test this, TODO
+  ; (pgex/kill-all! db)
+  )
 (deftest data-dict
 
   (testing
@@ -161,8 +150,7 @@
     ;   the contents may not be meaningful.
     (is (= 9 (count (keys (pgex/read-data-dictionary db))))))
 
-  ;
-  ; TODO test individually
+  ; The following calls are covered by the read-data-dictionary fn
   ; | (columns db) | List all database column objects |
   ; | (databases db) | List all databases |
   ; | (functions db) | List all function objects in current database |
@@ -175,6 +163,37 @@
   )
 
 (comment
-  (pgex/tables db)
-  (pgex/views db)
-  (pgex/columns db))
+  ; Some stats are skipped (nil) due to the lack of pg_stat_statements extension in test.
+  ; Depending on whether your test database has pg_stat_statements or not,
+  ; you'll want to run one of these:
+
+  ; no extension, outliers and call will always be nil.
+  ; (testing
+  ;  "read all stats, filter for nils."
+  ;   (is (= '([:outliers nil]
+  ;            [:calls nil])
+  ;          (filter (fn [[_ v]] (nil? v))
+  ;                  (pgex/read-stats db)))))
+
+  ; yes extension, outliers and call will always return times in decimal ms.
+  (deftest pg-stat-statements-based
+    (testing "outliers return exec time in ms"
+      (is (> (-> (pgex/outliers db {:limit 10}) first :exec_time_ms) 0M)))
+    (testing "outliers return sync io time in ms"
+      (is (>= (-> (pgex/outliers db {:limit 10}) first :sync_io_time_ms) 0M)))
+    (testing "calls return exec time in ms"
+      (is (> (-> (pgex/calls db {:limit 10}) first :exec_time_ms) 0M)))
+    (testing "calls return sync io time in ms"
+      (is (>= (-> (pgex/calls db {:limit 10}) first :sync_io_time_ms) 0M)))))
+
+(comment
+  ;; for testing another database,
+  ;; instead of the embedded zonky db
+  (def db
+    (jdbc/get-datasource
+     {:dbtype "postgresql"
+      :dbname "main"
+      :host "localhost"
+      :port 5432
+      :user "postgres"
+      :password "password"})))
