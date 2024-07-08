@@ -36,11 +36,7 @@
 ;;;
 ;;; Here's where the hugsql magic happens
 ;;; SQL files get converted into their respective clojure fns
-;;; 1300 lines of SQL + 2 lines of hugsql macro => 35+ fns 
 ;;;
-
-(hugsql/def-db-fns "sql/postgres_extras.sql")
-(hugsql/def-db-fns "sql/data_dictionary.sql")
 (declare columns
          databases
          functions
@@ -78,6 +74,10 @@
          total-table-size
          unused-indexes
          vacuum-stats)
+
+(hugsql/def-db-fns "sql/postgres_extras.sql")
+
+(hugsql/def-db-fns "sql/data_dictionary.sql")
 
 ;;;
 ;;; Stats
