@@ -90,7 +90,7 @@
     ; this just confirms that queries are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 26 (count (keys (pgex/read-stats db))))))
+    (is (= 25 (count (keys (pgex/read-stats db))))))
 
   (testing
    "read all stats, filter for nils."
