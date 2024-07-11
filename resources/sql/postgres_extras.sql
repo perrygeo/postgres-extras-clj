@@ -350,14 +350,14 @@ ORDER BY
 SELECT
     schemaname AS schema,
     relname AS name,
-    idx_blks_hit AS buffer_hits,
-    idx_blks_read AS block_reads,
-    idx_blks_hit + idx_blks_read AS total_read,
+    COALESCE(idx_blks_hit, 0) AS buffer_hits,
+    COALESCE(idx_blks_read, 0) AS block_reads,
+    COALESCE(idx_blks_hit + idx_blks_read, 0) AS total_read,
     CASE (idx_blks_hit + idx_blks_read)::float
     WHEN 0 THEN
-        NULL
+        0::float
     ELSE
-        (idx_blks_hit / (idx_blks_hit + idx_blks_read)::float)
+        COALESCE((idx_blks_hit / (idx_blks_hit + idx_blks_read)::float), 0)
     END ratio
 FROM
     pg_statio_user_tables
@@ -541,38 +541,39 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Find indexes with a high ratio of NULL values */
 SELECT
     c.oid,
-    c.relname AS index, pg_size_pretty(pg_relation_size(c.oid)) AS index_size,
-        i.indisunique AS unique,
-        a.attname AS indexed_column,
-        CASE s.null_frac
-        WHEN 0 THEN
-            ''
-        ELSE
-            to_char(s.null_frac * 100, '999.00%')
-        END AS null_frac,
-        pg_size_pretty((pg_relation_size(c.oid) * s.null_frac)::bigint) AS expected_saving
-    FROM
-        pg_class c
-        JOIN pg_index i ON i.indexrelid = c.oid
-        JOIN pg_attribute a ON a.attrelid = c.oid
-        JOIN pg_class c_table ON c_table.oid = i.indrelid
-        JOIN pg_indexes ixs ON c.relname = ixs.indexname
-        LEFT JOIN pg_stats s ON s.tablename = c_table.relname
-            AND a.attname = s.attname
-    WHERE
-        -- Primary key cannot be partial
-        NOT i.indisprimary
-        -- Exclude already partial indexes
-        AND i.indpred IS NULL
-        -- Exclude composite indexes
-        AND array_length(i.indkey, 1) = 1
-        -- Exclude indexes without null_frac ratio
-        AND coalesce(s.null_frac, 0) != 0
-        -- Larger than threshold
-        /* min_relation_size_mb = 10 */
-        AND pg_relation_size(c.oid) > 10 * 1024 ^ 2
-    ORDER BY
-        pg_relation_size(c.oid) * s.null_frac DESC;
+    c.relname AS index,
+    pg_size_pretty(pg_relation_size(c.oid)) AS index_size,
+    i.indisunique AS unique,
+    a.attname AS indexed_column,
+    CASE s.null_frac
+    WHEN 0 THEN
+        ''
+    ELSE
+        to_char(s.null_frac * 100, '999.00%')
+    END AS null_frac,
+    pg_size_pretty((pg_relation_size(c.oid) * s.null_frac)::bigint) AS expected_saving
+FROM
+    pg_class c
+    JOIN pg_index i ON i.indexrelid = c.oid
+    JOIN pg_attribute a ON a.attrelid = c.oid
+    JOIN pg_class c_table ON c_table.oid = i.indrelid
+    JOIN pg_indexes ixs ON c.relname = ixs.indexname
+    LEFT JOIN pg_stats s ON s.tablename = c_table.relname
+        AND a.attname = s.attname
+WHERE
+    -- Primary key cannot be partial
+    NOT i.indisprimary
+    -- Exclude already partial indexes
+    AND i.indpred IS NULL
+    -- Exclude composite indexes
+    AND array_length(i.indkey, 1) = 1
+    -- Exclude indexes without null_frac ratio
+    AND coalesce(s.null_frac, 0) != 0
+    -- Larger than threshold
+    /* min_relation_size_mb = 10 */
+    AND pg_relation_size(c.oid) > 10 * 1024 ^ 2
+ORDER BY
+    pg_relation_size(c.oid) * s.null_frac DESC;
 
 -- :name outliers
 -- :command :query
@@ -637,14 +638,14 @@ ORDER BY
 SELECT
     schemaname AS schema,
     relname AS name,
-    heap_blks_hit AS buffer_hits,
-    heap_blks_read AS block_reads,
-    heap_blks_hit + heap_blks_read AS total_read,
+    COALESCE(heap_blks_hit, 0) AS buffer_hits,
+    COALESCE(heap_blks_read, 0) AS block_reads,
+    COALESCE(heap_blks_hit + heap_blks_read, 0) AS total_read,
     CASE (heap_blks_hit + heap_blks_read)::float
     WHEN 0 THEN
-        NULL
+        0::float
     ELSE
-        (heap_blks_hit / (heap_blks_hit + heap_blks_read)::float)
+        COALESCE((heap_blks_hit / (heap_blks_hit + heap_blks_read)::float), 0)
     END ratio
 FROM
     pg_statio_user_tables
@@ -735,18 +736,19 @@ ORDER BY
 SELECT
     schemaname AS schema,
     relname AS table,
-    indexrelname AS index, pg_relation_size(i.indexrelid) AS index_size,
-        idx_scan AS index_scans
-    FROM
-        pg_stat_user_indexes ui
-        JOIN pg_index i ON ui.indexrelid = i.indexrelid
-    WHERE
-        NOT indisunique
-        AND idx_scan < :v:min_scans
-        AND pg_relation_size(relid) > 5 * 8192
-    ORDER BY
-        pg_relation_size(i.indexrelid) / nullif (idx_scan, 0) DESC NULLS FIRST,
-        pg_relation_size(i.indexrelid) DESC;
+    indexrelname AS index,
+    pg_relation_size(i.indexrelid) AS index_size,
+    idx_scan AS index_scans
+FROM
+    pg_stat_user_indexes ui
+    JOIN pg_index i ON ui.indexrelid = i.indexrelid
+WHERE
+    NOT indisunique
+    AND idx_scan < :v:min_scans
+    AND pg_relation_size(relid) > 5 * 8192
+ORDER BY
+    pg_relation_size(i.indexrelid) / nullif (idx_scan, 0) DESC NULLS FIRST,
+    pg_relation_size(i.indexrelid) DESC;
 
 -- :name vacuum-stats
 -- :command :query

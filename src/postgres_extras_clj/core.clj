@@ -208,4 +208,4 @@
   [stats & {:keys [diagnostic-fns] :or {diagnostic-fns default-diagnostic-fns}}]
   (filter #(not (:pass %)) (diagnose stats :diagnostic-fns diagnostic-fns)))
 
-;; see examples/with_next_jdbc.clj
+;; see examples/pgbench_tutorial.clj

@@ -106,7 +106,7 @@ to evaluate the stats according to a set of heuristics.
 
 ## Usage
 
-Check out the [examples](./examples/with_next_jdbc.clj) if you're looking to create a fresh namespace. 
+Check out the [examples](./examples/pgbench_tutorial.clj) if you're looking to create a fresh namespace. 
 
 The following is a REPL demonstration of `postgres-extras-clj` with the `next.jdbc` adapter. 
 Run `clj -M:dev` then evaluate the following forms
