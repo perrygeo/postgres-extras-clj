@@ -1,315 +1,357 @@
+; # `postgres-extras-clj` example workflow
+
+; A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
+;
+; * [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
+; * [Github](https://github.com/perrygeo/postgres-extras-clj)
+; * [Documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
+; * [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
+;
+
+; ## 🐘 Motivation
+;
+; PostgreSQL is a fantastic database but using it in production
+; requires some care, as do all databases.
+; The postgres [system catalogs](https://www.postgresql.org/docs/current/catalogs.html)
+; allow us to monitor things like query performance, connection management,
+; index efficiency, disk usage, and MVCC bloat. But accessing that information
+; requires some arcane knowledge and reasonably hardcore SQL skills.
+;
+; postgres-extras-clj aims to provide that missing toolkit to Clojure developers.
+
 (ns with-next-jdbc
   "This is a demonstration of postgres-extras-clj with the next.jdbc adapter."
   (:require
-   [hugsql.core :as hugsql]
    [hugsql.adapter.next-jdbc :as next-adapter]
+   [hugsql.core :as hugsql]
    [next.jdbc :as jdbc]
-   [postgres-extras-clj.core :as pgex]))
+   [postgres-extras-clj.core :as pgex]
+   [scicloj.kindly.v4.kind :as kind]))
 
-; {:deps {com.layerware/hugsql {:mvn/version "0.5.3"}
-;         com.layerware/hugsql-adapter-next-jdbc {:mvn/version "0.5.3"}
-;         org.clojure/clojure {:mvn/version "1.11.2"}
-;         org.postgresql/postgresql {:mvn/version "42.7.3"}
-;         seancorfield/next.jdbc {:mvn/version "1.2.659"}}}
+; ##  Utility functions
+;
+(defn show
+  "Given a sequence of maps (records),
+  Kindly show me a table with some nice UI elements."
+  [f]
+  (if (empty? f)
+    '()
+    (let [ncol (count (first f))
+          nrow (count f)]
+      (kind/table f
+                  {:use-datatables true
+                   :datatables {:paging (< 12 nrow)
+                                :scrollY false
+                                :scrollX (< 6 ncol)
+                                :pageLength 12}}))))
 
-;; define a JDBC datasource
+^:kindly/hide-code
+(defn meta-as-header [x]
+  (kind/md (str "### " (:doc (meta x)))))
+
+;;
+;; ## Setup
+;;
+
+;; ### Dependencies
+
+^:kindly/hide-code
+(kind/md
+ "```clojure
+ {:deps {com.layerware/hugsql {:mvn/version \"0.5.3\"}
+         com.layerware/hugsql-adapter-next-jdbc {:mvn/version \"0.5.3\"}
+         org.scicloj/clay {:mvn/version \"2-beta11\"}
+         org.postgresql/postgresql {:mvn/version \"42.7.3\"}
+         seancorfield/next.jdbc {:mvn/version \"1.2.659\"}}}
+  ```")
+
+; ### Database benchmark
+
+; Initialize
+
+^:kindly/hide-code
+(kind/md
+ "```bash
+ PGPASSWORD=password pgbench \\
+  --host localhost --port 5432 --username postgres \\
+  -s 10 -f 100 -i -i dtgvpf \\
+  main
+ ```")
+
+; Then run the stress test
+
+^:kindly/hide-code
+(kind/md
+ "```bash
+ PGPASSWORD=password pgbench \\
+  --host localhost --port 5432 --username postgres \\
+  --client 32 --transactions 1000 --jobs 8 \\
+  main
+ ```")
+
+;; ### Driver Setup 
+
+;; We define a JDBC datasource from a map
+
 (def db
   (jdbc/get-datasource
-   {:dbtype "postgresql"
-    :dbname "main"
-    :host "localhost"
-    :port 5432
-    :user "postgres"
-    :password "password"}))
+   {:dbtype "postgresql" :dbname "main" :host "localhost" :port 5432 :user "postgres" :password "password"}))
 
-;; tell hugsql about it
+;; or from a JDBC URI.
+
+(def db
+  (jdbc/get-datasource
+   "jdbc:postgresql://localhost:5432/main?user=postgres&password=password"))
+
+;; Do a health check
+
+(pgex/health-check db)
+
+;; Independently, we need to tell hugsql to expect next-jdbc.
 (hugsql/set-adapter! (next-adapter/hugsql-adapter-next-jdbc))
 
-(defn single-value [[k v]]
-  [k (if (or (nil? v) (empty? v)) nil (rand-nth v))])
 
-(comment
+; ## Settings at a glance
 
-; ## Database (s) 
+; These settings are a subset of the total available via
+; `postgresql.conf`, but these particular settings are worth
+; paying attention to.
 
-  (pgex/databases db)
-; [{:oid 19699,
-;   :db_name "main",
-;   :db_size "1530 MB",
-;   :table_count 72,
-;   :size_in_tables "1531 MB",
-;   :extension_count 2}]
+; How to tune each of these parameters is beyond the scope of this
+; document. There are plenty of guides and tools, my recommnedation
+; is [PGTune](https://pgtune.leopard.in.ua/) https://pgtune.leopard.in.ua/ 
+; which provides a web-based tool to generate
+; "optimal" settings depending on your hardware and application. 
 
-  (pgex/health-check db)
-  ; {:now #inst "2024-07-05T18:04:57.506678000-00:00",
-  ;  :version "PostgreSQL 16.1 (Debian 16.1-1.pgdg110+1) on x86_64-pc-linux-gnu..."}
+; The default settings are almost never optimal, they are far too conservative
+; and make poor use of modern hardware.
+; Here's my configuration tuned for test/dev on my laptop.
 
+(show (pgex/db-settings db))
+
+;;
 ;; ## Full map of database objects, the "data dictionary"
-  (keys
-    (pgex/read-data-dictionary db))
-  ; (:databases
-  ;  :columns
-  ;  :functions
-  ;  :indexes 
-  ;  :schemas
-  ;  :tables
-  ;  :views 
-  ;  :partition-children
-  ;  :partition-parents)
+;;
 
-  ;; Or one object, one item at time
-  (rand-nth (pgex/tables db))
-  ; {:size_pretty "16 kB",
-  ;  :description nil,
-  ;  :owned_by "postgres",
-  ;  :size_plus_indexes "48 kB",
-  ;  :rows 1,
-  ;  :oid 19789,
-  ;  :data_type "table",
-  ;  :size_plus_indexes_bytes 49152,
-  ;  :s_name "public",
-  ;  :system_object false,
-  ;  :t_name "users",
-  ;  :size_bytes 16384,
-  ;  :bytes_per_row 16384}
+(def dd (pgex/read-data-dictionary db))
+(keys dd)
 
-  ;; Full map of diagnostic statistics
-  (def stats (pgex/read-stats db))
-  (keys stats)
-  ; (:duplicate-indexes
-  ;  :db-settings
-  ;  :locks
-  ;  :vacuum-stats
-  ;  :index-usage
-  ;  :total-index-size
-  ;  :cache-hit
-  ;  :health-check
-  ;  :records-rank
-  ;  :null-indexes
-  ;  :index-cache-hit
-  ;  :all-locks
-  ;  :outliers
-  ;  :long-running-queries
-  ;  :extensions
-  ;  :total-table-size
-  ;  :unused-indexes
-  ;  :bloat
-  ;  :calls
-  ;  :table-size
-  ;  :connections
-  ;  :table-cache-hit
-  ;  :table-indexes-size
-  ;  :blocking
-  ;  :seq-scans
-  ;  :index-size)
+;; Or one object, one item at time
 
-  ;; Or use them individually, 
-  ;; e.g. to check current connections
-  (pgex/connections db)
-  ; [{:username "postgres",
-  ;   :client_address "172.22.0.1/32",
-  ;   :application_name "psql"}
-  ;  {:username "postgres",
-  ;   :client_address "172.22.0.1/32",
-  ;   :application_name "PostgreSQL JDBC Driver"}]
+^:kindly/hide-code (meta-as-header #'pgex/databases)
+(show (pgex/databases db))
+; example row
+^:kindly/hide-code (first (:databases dd))
 
-  ;; Most of the functions are zero-argument but a few
-  ;;   take additional args for performance reasons;
-  ;;   filtering at the database level avoids potentially
-  ;;   expensive IO operations.
+^:kindly/hide-code (meta-as-header #'pgex/schemas)
+(show (pgex/schemas db))
+; example row
+^:kindly/hide-code (first (:schemas dd))
 
-  ;; Find slow queries with `outliers`
-  ;; requires creating the pg_stat_statements 
-  ;;   extension, which you should almost certainly do anyway.
-  ;;
-  ;; Usually we're looking for the worst offenders,
-  ;; so we can :limit the top x, sorted desceding by time.
-  ;;
-  (pgex/outliers db {:limit 1})
+^:kindly/hide-code (meta-as-header #'pgex/views)
+(show (pgex/views db))
+; example row
+^:kindly/hide-code (first (:views dd))
 
-  ;; The only mutating function in the entire library
-  ;; is a kill switch for closing all connections,
-  ;; vital if you need to take a heavily-used database
-  ;; down for maintenance or emergency. Needless to say,
-  ;; use with caution!
-  (pgex/kill-all! db)
+^:kindly/hide-code (meta-as-header #'pgex/indexes)
+(show (pgex/indexes db))
+; example row
+^:kindly/hide-code (first (:indexes dd))
 
-  ;; Query and and print all default diagnostics
-  (doseq [d (pgex/diagnose (pgex/read-stats db))]
-    (println (:message d)))
+^:kindly/hide-code (meta-as-header #'pgex/columns)
+(show (pgex/columns db))
+; example row
+^:kindly/hide-code (first (:columns dd))
 
-  ;; Query and and print all default diagnostics (warnings only)
-  (doseq [w (pgex/diagnose-warnings (pgex/read-stats db))]
-    (println (:message w)))
+^:kindly/hide-code (meta-as-header #'pgex/tables)
+(show (pgex/tables db))
+; example row
+^:kindly/hide-code (first (:databases dd))
 
-  ;; Create your own diagnostics
-  (def unrealistic-expectations
-    {:table-cache-hit
-     {:pred #(> (:ratio %) 0.999)
-      :onfalse "The cache hit ratio is not as insanely high as I'd like."
-      :idfn :name}})
+^:kindly/hide-code (meta-as-header #'pgex/functions)
+(show (pgex/functions db))
+; example row
+^:kindly/hide-code (first (:functions dd))
 
-  (doseq [w (pgex/diagnose-warnings
-             (pgex/read-stats db)
-             :diagnostic-fns unrealistic-expectations)]
-    (println (:message w)))
-  ; ! Warning :table-cache-hit, message_topics, The cache hit ratio is not as insanely high as I'd like.
-  ; {:ratio 0.9806201550387597, :schema "public", :name "message_topics", :buffer_hits 253, :block_reads 5, :total_read 258}
-  ; ...
+#_(filter #(= (:t_name %) "pgbench_accounts") (pgex/tables db))
 
-  ;; just for fun :-P
-  (doseq [m (pgex/mandelbrot db)]
-    (println (:art m))))
+;; 
+;; ## Full map of diagnostic statistics
+;;
 
-#_{:clj-kondo/ignore [:duplicate-require]}
+(def stats (pgex/read-stats db {:limit 100}))
+(keys stats)
+
+^:kindly/hide-code
 (comment
-  (require '[postgres-extras-clj.core :as pgex])
-  (require '[hugsql.core :as hugsql])
-  (require '[hugsql.adapter.next-jdbc :as next-adapter])
-  (require '[next.jdbc :as jdbc])
-  (hugsql/set-adapter! (next-adapter/hugsql-adapter-next-jdbc))
+  ;;;
+  ;;; These show zero results and aren't worth showing until then 
+  ;;;
+  ^:kindly/hide-code (meta-as-header #'pgex/partition-children)
+  (show (pgex/partition-children db))
 
-  (def db
-    (jdbc/get-datasource
-     "jdbc:postgresql://localhost:5432/main?user=postgres&password=password"))
+  ^:kindly/hide-code (meta-as-header #'pgex/partition-parents)
+  (show (pgex/partition-parents db))
 
-  (pgex/health-check db)
-  ; {:now #inst "2024-07-07T21:56:59.013996000-00:00",
-  ;  :version "PostgreSQL 16.1 (Debian 16.1-1.pgdg110+1)..."}
+  ^:kindly/hide-code (meta-as-header #'pgex/duplicate-indexes)
+  (show (pgex/duplicate-indexes db))
 
-  ;; ## Settings
+  ^:kindly/hide-code (meta-as-header #'pgex/locks)
+  (show (pgex/locks db))
 
-  ;; Check the database settings
-  (rand-nth (pgex/db-settings db))
-  ; {:name "max_connections",
-  ;  :setting "400",
-  ;  :unit nil,
-  ;  :short_desc "Sets the maximum number of concurrent connections."}
+  ^:kindly/hide-code (meta-as-header #'pgex/null-indexes)
+  (show (pgex/null-indexes db))
 
-  (let [settings (pgex/db-settings db)]
-    (zipmap (map :name settings) (map :setting settings)))
-  ; {"default_statistics_target" "100",
-  ;  "shared_buffers" "263168",
-  ;  "min_wal_size" "80",
-  ;  "effective_io_concurrency" "1",
-  ;  "maintenance_work_mem" "655360",
-  ;  "work_mem" "40960",
-  ;  "checkpoint_completion_target" "0.75",
-  ;  "wal_buffers" "2048",
-  ;  "effective_cache_size" "524288",
-  ;  "max_connections" "400",
-  ;  "random_page_cost" "4",
-  ;  "max_wal_size" "1024"}
+  ^:kindly/hide-code (meta-as-header #'pgex/all-locks)
+  (show (pgex/all-locks db))
 
-  ;; ## Locks
+  ^:kindly/hide-code (meta-as-header #'pgex/blocking)
+  (show (pgex/blocking db))
+  ;;;
+  )
 
-  (pgex/locks db) ; []
+^:kindly/hide-code (meta-as-header #'pgex/vacuum-stats)
+(show (pgex/vacuum-stats db))
+; example row
+^:kindly/hide-code (first (:vacuum-stats stats))
 
-  ;; ## Vaccum stats
-  (rand-nth
-    (pgex/vacuum-stats db))
-; {:schema "public",
-;  :table "pgbench_accounts",
-;  :last_vacuum "2024-07-07 15:42",
-;  :last_autovacuum "2024-07-07 15:48",
-;  :rowcount 9999472.0,
-;  :dead_rowcount 157547,
-;  :autovacuum_threshold 200039.44,
-;  :expect_autovacuum nil}
+^:kindly/hide-code (meta-as-header #'pgex/index-usage)
+(show (pgex/index-usage db))
+; example row
+^:kindly/hide-code (first (:index-usage stats))
 
-  (zipmap
-    (map :name (pgex/db-settings db))
-    (map :setting (pgex/db-settings db)))
+^:kindly/hide-code (meta-as-header #'pgex/total-index-size)
+(pgex/total-index-size db)
+; example row
+^:kindly/hide-code (first (:total-index-size stats))
 
-  ;; ## Tables 
+^:kindly/hide-code (meta-as-header #'pgex/cache-hit)
+(show (pgex/cache-hit db))
+; example row
+^:kindly/hide-code (first (:cache-hit stats))
 
-  ;; aTable tuples alone
-  (pgex/table-size db)
-; [{:schema "public", :name "pgbench_accounts", :size 1364787200}
-;  {:schema "public", :name "pgbench_history", :size 5341184}
-;  {:schema "public", :name "pgbench_tellers", :size 1024000}
-;  {:schema "public", :name "pgbench_branches", :size 876544}]
+^:kindly/hide-code (meta-as-header #'pgex/records-rank)
+(show (pgex/records-rank db))
+; example row
+^:kindly/hide-code (first (:records-rank stats))
 
-  ;; Indexes associated with 
-  (pgex/table-indexes-size db)
-; [{:schema "public", :table "pgbench_accounts", :index_size 224641024}
-;  {:schema "public", :table "pgbench_tellers", :index_size 106496}
-;  {:schema "public", :table "pgbench_branches", :index_size 16384}
-;  {:schema "public", :table "pgbench_history", :index_size 0}]
+^:kindly/hide-code (meta-as-header #'pgex/index-cache-hit)
+(show (pgex/index-cache-hit db))
+; example row
+^:kindly/hide-code (first (:index-cache-hit stats))
 
-  ;; Combined
-  (pgex/total-table-size db)
-; [{:schema "public", :name "pgbench_accounts", :size 1589428224}
-;  {:schema "public", :name "pgbench_history", :size 5341184}
-;  {:schema "public", :name "pgbench_tellers", :size 1130496}
-;  {:schema "public", :name "pgbench_branches", :size 892928}]
+^:kindly/hide-code (meta-as-header #'pgex/outliers)
+(show (pgex/outliers db {:limit 10}))
+; example row
+^:kindly/hide-code (first (:outliers stats))
 
-  (rand-nth (pgex/table-cache-hit db))
-; {:schema "public",
-;  :name "pgbench_accounts",
-;  :buffer_hits 6479787,
-;  :block_reads 704260,
-;  :total_read 7184047,
-;  :ratio 0.9019689041566682}
+^:kindly/hide-code (meta-as-header #'pgex/long-running-queries)
+(show (pgex/long-running-queries db))
+; example row
+^:kindly/hide-code (first (:long-running-queries stats))
 
-  (filter #(= (:t_name %) "pgbench_accounts") (pgex/tables db))
-; ({:size_pretty "1302 MB",
-;   :description nil,
-;   :owned_by "postgres",
-;   :size_plus_indexes "1516 MB",
-;   :rows 9999472,
-;   :oid 19737,
-;   :data_type "table",
-;   :size_plus_indexes_bytes 1589428224,
-;   :s_name "public",
-;   :system_object false,
-;   :t_name "pgbench_accounts",
-;   :size_bytes 1364787200,
-;   :bytes_per_row 136})
+^:kindly/hide-code (meta-as-header #'pgex/extensions)
+(show (pgex/extensions db))
+; example row
+^:kindly/hide-code (first (:extensions stats))
 
-  ; ## Indexes
+^:kindly/hide-code (meta-as-header #'pgex/total-table-size)
+(show (pgex/total-table-size db))
+; example row
+^:kindly/hide-code (first (:total-table-size stats))
 
-  (count (pgex/indexes db)) ; 167
+^:kindly/hide-code (meta-as-header #'pgex/unused-indexes)
+(show (pgex/unused-indexes db {:min_scans 50}))
+; example row
+^:kindly/hide-code (first (:unused-indexes stats))
 
-  (pgex/total-index-size)
+^:kindly/hide-code (meta-as-header #'pgex/bloat)
+(show (pgex/bloat db))
+; example row
+^:kindly/hide-code (first (:bloat stats))
 
-  (last (filter #(not (:system_object %)) (pgex/indexes db)))
-; {:total_columns 1,
-;  :unique_index true,
-;  :rows_indexed 9999472.0,
-;  :oid 19759,
-;  :index_size_bytes 224641024,
-;  :i_name "pgbench_accounts_pkey",
-;  :partial_index false,
-;  :index_size "214 MB",
-;  :key_columns 1,
-;  :valid_index true,
-;  :s_name "public",
-;  :system_object false,
-;  :primary_key true,
-;  :t_name "pgbench_accounts"}
+^:kindly/hide-code (meta-as-header #'pgex/calls)
+(show (pgex/calls db {:limit 10}))
+; example row
+^:kindly/hide-code (first (:calls stats))
 
-  (pgex/index-size db)
-; [{:schema "public", :name "pgbench_accounts_pkey", :size 224641024}
-;  {:schema "public", :name "pgbench_tellers_pkey", :size 106496}
-;  {:schema "public", :name "pgbench_branches_pkey", :size 16384}]
+^:kindly/hide-code (meta-as-header #'pgex/table-size)
+(show (pgex/table-size db))
+; example row
+^:kindly/hide-code (first (:table-size stats))
 
-  (first (pgex/index-usage db))
-; {:schema "public",
-;  :name "pgbench_accounts",
-;  :percent_of_times_index_used 99,
-;  :rows_in_table 9999472}
+^:kindly/hide-code (meta-as-header #'pgex/connections)
+(show (pgex/connections db))
+; example row
+^:kindly/hide-code (first (:connections stats))
 
-  (last (pgex/index-cache-hit db))
-; {:schema "public",
-;  :name "pgbench_accounts",
-;  :buffer_hits 6685792,
-;  :block_reads 27422,
-;  :total_read 6713214,
-;  :ratio 0.9959152203400636}
+^:kindly/hide-code (meta-as-header #'pgex/table-cache-hit)
+(show (pgex/table-cache-hit db))
+; example row
+^:kindly/hide-code (first (:table-cache-hit stats))
 
-  (pgex/duplicate-indexes db) ; []
+^:kindly/hide-code (meta-as-header #'pgex/table-indexes-size)
+(show (pgex/table-indexes-size db))
+; example row
+^:kindly/hide-code (first (:table-indexes-size stats))
 
-  (into {} (map single-value (pgex/read-stats db :limit 100)))
-  (into {} (map single-value (pgex/read-data-dictionary db)))) ; nil
 
+^:kindly/hide-code (meta-as-header #'pgex/seq-scans)
+(show (pgex/seq-scans db))
+; example row
+^:kindly/hide-code (first (:seq-scans stats))
+
+^:kindly/hide-code (meta-as-header #'pgex/index-size)
+(show (pgex/index-size db))
+; example row
+^:kindly/hide-code (first (:index-size stats))
+
+;; ## The Kill Switch
+
+;; The only mutating function in the entire library
+;; is a kill switch for closing all connections,
+;; vital if you need to take a heavily-used database
+;; down for maintenance or emergency.
+;;
+;;; ```clojure
+;;; (pgex/kill-all! db)  ;; use with caution
+;;; ```
+
+;; ## Diagnostics
+
+;; Query and and print all default diagnostics
+
+(for [d (pgex/diagnose (pgex/read-stats db))]
+  (:message d))
+
+;; Or just the warnings
+
+(for [w (pgex/diagnose-warnings (pgex/read-stats db))]
+  (:message w))
+
+;; Create your own diagnostics
+
+(def unrealistic-expectations
+  {:table-cache-hit
+   {:pred #(> (:ratio %) 0.999)
+    :onfalse "The cache hit ratio is not as insanely high as I'd like."
+    :idfn :name}})
+
+(for [w (pgex/diagnose-warnings
+         (pgex/read-stats db)
+         :diagnostic-fns unrealistic-expectations)]
+  (:message w))
+
+;; ## Just for fun
+
+(for [m (pgex/mandelbrot db)]
+  (:art m))
+
+; ## To recreate this notebook
+;
+(comment
+  (require '[scicloj.clay.v2.api :as clay])
+  (clay/browse!)
+  (clay/make! {:source-path "examples/with_next_jdbc.clj"
+               :format [:html]
+               :base-target-path "target/clay"}))
