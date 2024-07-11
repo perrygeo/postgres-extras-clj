@@ -364,4 +364,4 @@
   (clay/browse!)
   (clay/make! {:source-path "examples/pgbench_tutorial.clj"
                :format [:quarto :html]
-               :base-target-path "examples/rendered"}))
+               :base-target-path "target/clay"}))
