@@ -4,6 +4,11 @@ This change log follows the conventions of [keepachangelog.com](http://keepachan
 
 This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
+**Unreleased**
+
+- FIX: For the index-cache-hit and table-cache-hit tables, COALESCE null values to zero for unused.
+- CHANGES: Added pgbench example
+
 ## [0.1.17] - 2024-07-08
 
 - Declare fns before hugsql macros to get proper docstrings
