@@ -10,6 +10,8 @@ com.github.perrygeo/postgres-extras-clj {:mvn/version "0.1.17"}
 * [Github](https://github.com/perrygeo/postgres-extras-clj)
 * [Documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
 * [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
+* [Example Notebook](https://perrygeo.github.io/postgres-extras-clj/)
+
 
 ## 🐘 Motivation
 
