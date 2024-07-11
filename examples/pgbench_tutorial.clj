@@ -1,26 +1,21 @@
-; # `postgres-extras-clj` example workflow
+; # `postgres-extras-clj` example with pgbench
 
-; A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
+; `postgres-extras-clj` is a Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 ;
 ; * [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
 ; * [Github](https://github.com/perrygeo/postgres-extras-clj)
 ; * [Documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
 ; * [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
 ;
-
-; ## 🐘 Motivation
+; In this notebook, we'll cover the majority of the high-level API,
+; demonstrating some useful fns based on the postgres [system catalogs](https://www.postgresql.org/docs/current/catalogs.html).
 ;
-; PostgreSQL is a fantastic database but using it in production
-; requires some care, as do all databases.
-; The postgres [system catalogs](https://www.postgresql.org/docs/current/catalogs.html)
-; allow us to monitor things like query performance, connection management,
-; index efficiency, disk usage, and MVCC bloat. But accessing that information
-; requires some arcane knowledge and reasonably hardcore SQL skills.
-;
-; postgres-extras-clj aims to provide that missing toolkit to Clojure developers.
+; This notebook is written in a [Clojure namespace](https://github.com/perrygeo/postgres-extras-clj/blob/main/examples/pgbench_tutorial.clj)
+; and converted to HTML using [Clay](https://scicloj.github.io/clay/#api).
 
-(ns with-next-jdbc
-  "This is a demonstration of postgres-extras-clj with the next.jdbc adapter."
+(ns pgbench-tutorial
+  "This is a demonstration of postgres-extras-clj using the next.jdbc adapter
+  to access a pgbench database."
   (:require
    [hugsql.adapter.next-jdbc :as next-adapter]
    [hugsql.core :as hugsql]
@@ -45,6 +40,13 @@
                                 :scrollX (< 6 ncol)
                                 :pageLength 12}}))))
 
+(defn show-public
+  "Given a sequence of maps (records), 
+  filter for non-system objects, then show it."
+  [f]
+  (show
+   (filter #(not (:system_object %)) f)))
+
 ^:kindly/hide-code
 (defn meta-as-header [x]
   (kind/md (str "### " (:doc (meta x)))))
@@ -67,7 +69,12 @@
 
 ; ### Database benchmark
 
-; Initialize
+; We'll use [`pgbench`](https://www.postgresql.org/docs/current/pgbench.html) to get a database populated with interesting tables:
+
+; > Pgbench is a simple program for running benchmark tests on PostgreSQL. 
+; > It runs the same sequence of SQL commands over and over, possibly in multiple concurrent database sessions, and then calculates the average transaction rate (transactions per second) . By default, pgbench tests a scenario that is loosely based on TPC-B, involving five SELECT, UPDATE, and INSERT commands per transaction.
+
+; To initialize
 
 ^:kindly/hide-code
 (kind/md
@@ -78,7 +85,7 @@
   main
  ```")
 
-; Then run the stress test
+; Then run the benchmarks
 
 ^:kindly/hide-code
 (kind/md
@@ -99,16 +106,19 @@
 
 ;; or from a JDBC URI.
 
-(def db
+(def db2
   (jdbc/get-datasource
    "jdbc:postgresql://localhost:5432/main?user=postgres&password=password"))
 
-;; Do a health check
-
-(pgex/health-check db)
-
 ;; Independently, we need to tell hugsql to expect next-jdbc.
 (hugsql/set-adapter! (next-adapter/hugsql-adapter-next-jdbc))
+
+;; Do a health check to ensure connectivity
+
+^:kindly/hide-code
+(pgex/health-check db2)
+
+(pgex/health-check db)
 
 
 ; ## Settings at a glance
@@ -118,16 +128,18 @@
 ; paying attention to.
 
 ; How to tune each of these parameters is beyond the scope of this
-; document. There are plenty of guides and tools, my recommnedation
-; is [PGTune](https://pgtune.leopard.in.ua/) https://pgtune.leopard.in.ua/ 
-; which provides a web-based tool to generate
+; document. There are plenty of guides online, my recommnedation
+; being [PGTune](https://pgtune.leopard.in.ua/). 
+; It provides a simple, web-based tool to generate
 ; "optimal" settings depending on your hardware and application. 
 
-; The default settings are almost never optimal, they are far too conservative
-; and make poor use of modern hardware.
+; The default settings that ship with postgres are almost never optimal,
+; they are far too conservative and make poor use of modern hardware.
 ; Here's my configuration tuned for test/dev on my laptop.
 
 (show (pgex/db-settings db))
+; example row
+^:kindly/hide-code (first (pgex/db-settings db))
 
 ;;
 ;; ## Full map of database objects, the "data dictionary"
@@ -144,32 +156,36 @@
 ^:kindly/hide-code (first (:databases dd))
 
 ^:kindly/hide-code (meta-as-header #'pgex/schemas)
-(show (pgex/schemas db))
+(show-public (pgex/schemas db))
 ; example row
+(comment
+  (count (pgex/schemas db))
+  (count (show (pgex/schemas db)))
+  (count (show-public (pgex/schemas db))))
 ^:kindly/hide-code (first (:schemas dd))
 
 ^:kindly/hide-code (meta-as-header #'pgex/views)
-(show (pgex/views db))
+(show-public (pgex/views db))
 ; example row
 ^:kindly/hide-code (first (:views dd))
 
 ^:kindly/hide-code (meta-as-header #'pgex/indexes)
-(show (pgex/indexes db))
+(show-public (pgex/indexes db))
 ; example row
 ^:kindly/hide-code (first (:indexes dd))
 
 ^:kindly/hide-code (meta-as-header #'pgex/columns)
-(show (pgex/columns db))
+(show-public (pgex/columns db))
 ; example row
 ^:kindly/hide-code (first (:columns dd))
 
 ^:kindly/hide-code (meta-as-header #'pgex/tables)
-(show (pgex/tables db))
+(show-public (pgex/tables db))
 ; example row
-^:kindly/hide-code (first (:databases dd))
+^:kindly/hide-code (first (:tables dd))
 
 ^:kindly/hide-code (meta-as-header #'pgex/functions)
-(show (pgex/functions db))
+(show-public (pgex/functions db))
 ; example row
 ^:kindly/hide-code (first (:functions dd))
 
@@ -182,33 +198,6 @@
 (def stats (pgex/read-stats db {:limit 100}))
 (keys stats)
 
-^:kindly/hide-code
-(comment
-  ;;;
-  ;;; These show zero results and aren't worth showing until then 
-  ;;;
-  ^:kindly/hide-code (meta-as-header #'pgex/partition-children)
-  (show (pgex/partition-children db))
-
-  ^:kindly/hide-code (meta-as-header #'pgex/partition-parents)
-  (show (pgex/partition-parents db))
-
-  ^:kindly/hide-code (meta-as-header #'pgex/duplicate-indexes)
-  (show (pgex/duplicate-indexes db))
-
-  ^:kindly/hide-code (meta-as-header #'pgex/locks)
-  (show (pgex/locks db))
-
-  ^:kindly/hide-code (meta-as-header #'pgex/null-indexes)
-  (show (pgex/null-indexes db))
-
-  ^:kindly/hide-code (meta-as-header #'pgex/all-locks)
-  (show (pgex/all-locks db))
-
-  ^:kindly/hide-code (meta-as-header #'pgex/blocking)
-  (show (pgex/blocking db))
-  ;;;
-  )
 
 ^:kindly/hide-code (meta-as-header #'pgex/vacuum-stats)
 (show (pgex/vacuum-stats db))
@@ -245,10 +234,6 @@
 ; example row
 ^:kindly/hide-code (first (:outliers stats))
 
-^:kindly/hide-code (meta-as-header #'pgex/long-running-queries)
-(show (pgex/long-running-queries db))
-; example row
-^:kindly/hide-code (first (:long-running-queries stats))
 
 ^:kindly/hide-code (meta-as-header #'pgex/extensions)
 (show (pgex/extensions db))
@@ -259,11 +244,6 @@
 (show (pgex/total-table-size db))
 ; example row
 ^:kindly/hide-code (first (:total-table-size stats))
-
-^:kindly/hide-code (meta-as-header #'pgex/unused-indexes)
-(show (pgex/unused-indexes db {:min_scans 50}))
-; example row
-^:kindly/hide-code (first (:unused-indexes stats))
 
 ^:kindly/hide-code (meta-as-header #'pgex/bloat)
 (show (pgex/bloat db))
@@ -305,6 +285,40 @@
 (show (pgex/index-size db))
 ; example row
 ^:kindly/hide-code (first (:index-size stats))
+
+^:kindly/hide-code
+(comment
+  ;;;
+  ;;; These show zero results with the pgbench example
+  ;;; show them once we can reproduce the required conditions
+  ;;;
+  ^:kindly/hide-code (meta-as-header #'pgex/partition-children)
+  (show (pgex/partition-children db))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/partition-parents)
+  (show (pgex/partition-parents db))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/duplicate-indexes)
+  (show (pgex/duplicate-indexes db))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/locks)
+  (show (pgex/locks db))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/null-indexes)
+  (show (pgex/null-indexes db))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/all-locks)
+  (show (pgex/all-locks db))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/blocking)
+  (show (pgex/blocking db))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/unused-indexes)
+  (show (pgex/unused-indexes db {:min_scans 50}))
+
+  ^:kindly/hide-code (meta-as-header #'pgex/long-running-queries)
+  (show (pgex/long-running-queries db)))
+
 
 ;; ## The Kill Switch
 
@@ -352,6 +366,6 @@
 (comment
   (require '[scicloj.clay.v2.api :as clay])
   (clay/browse!)
-  (clay/make! {:source-path "examples/with_next_jdbc.clj"
-               :format [:html]
+  (clay/make! {:source-path "examples/pgbench_tutorial.clj"
+               :format [:quarto :html]
                :base-target-path "target/clay"}))
