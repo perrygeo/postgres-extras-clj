@@ -1,0 +1,1504 @@
+
+---
+format:
+  html: {toc: true, toc-depth: 4, theme: cosmo, output-file: pgbench_tutorial.html}
+fontsize: 0.9em
+code-block-background: true
+include-in-header: {text: '<link rel = "icon" href = "data:," />'}
+
+---
+<style></style><style>.printedClojure .sourceCode {
+  background-color: transparent;
+  border-style: none;
+}
+</style><style>.clay-limit-image-width .clay-image {max-width: 100%}
+</style>
+<script src="pgbench_tutorial_files/md-default0.js" type="text/javascript"></script><script src="pgbench_tutorial_files/md-default1.js" type="text/javascript"></script><script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js" type="text/javascript"></script><link href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" rel="stylesheet" type="text/css" />
+
+# `postgres-extras-clj` example with pgbench
+
+`postgres-extras-clj` is a Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
+
+* [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
+* [Github](https://github.com/perrygeo/postgres-extras-clj)
+* [Documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
+* [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
+
+In this notebook, we'll cover the majority of the high-level API,
+demonstrating some useful fns based on the postgres [system catalogs](https://www.postgresql.org/docs/current/catalogs.html).
+
+This notebook is written in a [Clojure namespace](https://github.com/perrygeo/postgres-extras-clj/blob/main/examples/pgbench_tutorial.clj)
+and converted to HTML using [Clay](https://scicloj.github.io/clay/#api).
+
+
+::: {.sourceClojure}
+```clojure
+(ns pgbench-tutorial
+  "This is a demonstration of postgres-extras-clj using the next.jdbc adapter
+  to access a pgbench database."
+  (:require
+   [hugsql.adapter.next-jdbc :as next-adapter]
+   [hugsql.core :as hugsql]
+   [next.jdbc :as jdbc]
+   [postgres-extras-clj.core :as pgex]
+   [scicloj.kindly.v4.kind :as kind]))
+```
+:::
+
+
+
+##  Utility functions
+
+
+
+::: {.sourceClojure}
+```clojure
+(defn show
+  "Given a sequence of maps (records),
+  Kindly show me a table with some nice UI elements."
+  [f]
+  (if (empty? f)
+    '()
+    (let [ncol (count (first f))
+          nrow (count f)]
+      (kind/table f
+                  {:use-datatables true
+                   :datatables {:paging (< 12 nrow)
+                                :scrollY false
+                                :scrollX (< 6 ncol)
+                                :pageLength 12}}))))
+```
+:::
+
+
+
+::: {.sourceClojure}
+```clojure
+(defn show-public
+  "Given a sequence of maps (records), 
+  filter for non-system objects, then show it."
+  [f]
+  (show
+   (filter #(not (:system_object %)) f)))
+```
+:::
+
+
+
+
+## Setup
+
+
+
+### Dependencies
+
+```clojure
+ {:deps {com.layerware/hugsql {:mvn/version "0.5.3"}
+         com.layerware/hugsql-adapter-next-jdbc {:mvn/version "0.5.3"}
+         org.scicloj/clay {:mvn/version "2-beta11"}
+         org.postgresql/postgresql {:mvn/version "42.7.3"}
+         seancorfield/next.jdbc {:mvn/version "1.2.659"}}}
+  ```
+
+
+### Database benchmark
+
+We'll use [`pgbench`](https://www.postgresql.org/docs/current/pgbench.html) to get a database populated with interesting tables:
+
+> Pgbench is a simple program for running benchmark tests on PostgreSQL. 
+> It runs the same sequence of SQL commands over and over, possibly in multiple concurrent database sessions, and then calculates the average transaction rate (transactions per second) . By default, pgbench tests a scenario that is loosely based on TPC-B, involving five SELECT, UPDATE, and INSERT commands per transaction.
+
+To initialize
+
+```bash
+ PGPASSWORD=password pgbench --host localhost --port 5432 --username postgres -s 10 -F 100 -i -I dtgvpf main
+ ```
+
+Then run the benchmarks
+
+```bash
+ PGPASSWORD=password pgbench --host localhost --port 5432 --username postgres --client 32 --transactions 1000 --jobs 8 main
+ ```
+
+
+### Driver Setup 
+
+We define a JDBC datasource from a map
+
+
+::: {.sourceClojure}
+```clojure
+(def db
+  (jdbc/get-datasource
+   {:dbtype "postgresql" :dbname "main" :host "localhost" :port 5432 :user "postgres" :password "password"}))
+```
+:::
+
+
+or from a JDBC URI.
+
+
+::: {.sourceClojure}
+```clojure
+(def db2
+  (jdbc/get-datasource
+   "jdbc:postgresql://localhost:5432/main?user=postgres&password=password"))
+```
+:::
+
+
+Independently, we need to tell hugsql to expect next-jdbc.
+
+
+::: {.sourceClojure}
+```clojure
+(hugsql/set-adapter! (next-adapter/hugsql-adapter-next-jdbc))
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+#object[hugsql.adapter.next_jdbc.HugsqlAdapterNextJdbc 0x161ec66b "hugsql.adapter.next_jdbc.HugsqlAdapterNextJdbc@161ec66b"]
+
+```
+:::
+
+
+Do a health check to ensure connectivity
+
+
+::: {.sourceClojure}
+```clojure
+(pgex/health-check db)
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+{:now #inst "2024-07-11T15:09:50.237955000-00:00",
+ :version
+ "PostgreSQL 16.2 (Debian 16.2-1.pgdg110+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 10.2.1-6) 10.2.1 20210110, 64-bit"}
+
+```
+:::
+
+
+
+## Settings at a glance
+
+These settings are a subset of the total available via
+`postgresql.conf`, but these particular settings are worth
+paying attention to.
+
+How to tune each of these parameters is beyond the scope of this
+document. There are plenty of guides online, my recommnedation
+being [PGTune](https://pgtune.leopard.in.ua/). 
+It provides a simple, web-based tool to generate
+"optimal" settings depending on your hardware and application. 
+
+The default settings that ship with postgres are almost never optimal,
+they are far too conservative and make poor use of modern hardware.
+Here's my configuration tuned for test/dev on my laptop.
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/db-settings db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>name</th><th>setting</th><th>unit</th><th>short_desc</th></tr></thead><tbody><tr><td>checkpoint_completion_target</td><td>0.75</td><td></td><td>Time spent flushing dirty buffers during checkpoint, as fraction of checkpoint interval.</td></tr><tr><td>default_statistics_target</td><td>100</td><td></td><td>Sets the default statistics target.</td></tr><tr><td>effective_cache_size</td><td>524288</td><td>8kB</td><td>Sets the planner's assumption about the total size of the data caches.</td></tr><tr><td>effective_io_concurrency</td><td>1</td><td></td><td>Number of simultaneous requests that can be handled efficiently by the disk subsystem.</td></tr><tr><td>maintenance_work_mem</td><td>655360</td><td>kB</td><td>Sets the maximum memory to be used for maintenance operations.</td></tr><tr><td>max_connections</td><td>400</td><td></td><td>Sets the maximum number of concurrent connections.</td></tr><tr><td>max_wal_size</td><td>1024</td><td>MB</td><td>Sets the WAL size that triggers a checkpoint.</td></tr><tr><td>min_wal_size</td><td>80</td><td>MB</td><td>Sets the minimum size to shrink the WAL to.</td></tr><tr><td>random_page_cost</td><td>4</td><td></td><td>Sets the planner's estimate of the cost of a nonsequentially fetched disk page.</td></tr><tr><td>shared_buffers</td><td>263168</td><td>8kB</td><td>Sets the number of shared memory buffers used by the server.</td></tr><tr><td>wal_buffers</td><td>2048</td><td>8kB</td><td>Sets the number of disk-page buffers in shared memory for WAL.</td></tr><tr><td>work_mem</td><td>40960</td><td>kB</td><td>Sets the maximum memory to be used for query workspaces.</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:name "checkpoint_completion_target",
+ :setting "0.75",
+ :unit nil,
+ :short_desc
+ "Time spent flushing dirty buffers during checkpoint, as fraction of checkpoint interval."}
+
+```
+:::
+
+
+
+
+## Full map of database objects, the "data dictionary"
+
+
+
+::: {.sourceClojure}
+```clojure
+(def dd (pgex/read-data-dictionary db))
+```
+:::
+
+
+
+::: {.sourceClojure}
+```clojure
+(keys dd)
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+(:partition-children
+ :columns
+ :functions
+ :tables
+ :databases
+ :schemas
+ :partition-parents
+ :indexes
+ :views)
+
+```
+:::
+
+
+Or one object, one item at time
+
+### List all databases
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/databases db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>oid</th><th>db_name</th><th>db_size</th><th>table_count</th><th>size_in_tables</th><th>extension_count</th></tr></thead><tbody><tr><td>19699</td><td>main</td><td>161 MB</td><td>72</td><td>162 MB</td><td>2</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:oid 19699,
+ :db_name "main",
+ :db_size "161 MB",
+ :table_count 72,
+ :size_in_tables "162 MB",
+ :extension_count 2}
+
+```
+:::
+
+
+### List all shemas in current database
+
+
+::: {.sourceClojure}
+```clojure
+(show-public (pgex/schemas db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>size_pretty</th><th>description</th><th>view_count</th><th>size_plus_indexes</th><th>table_count</th><th>function_count</th><th>size_plus_indexes_bytes</th><th>s_name</th><th>system_object</th><th>owner</th><th>size_bytes</th></tr></thead><tbody><tr><td>132 MB</td><td>standard public schema</td><td>2</td><td>154 MB</td><td>4</td><td>3</td><td>161226752</td><td>public</td><td>false</td><td>pg_database_owner</td><td>138706944</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:size_pretty "248 kB",
+ :description nil,
+ :view_count 65,
+ :size_plus_indexes "248 kB",
+ :table_count 4,
+ :function_count 11,
+ :size_plus_indexes_bytes 253952,
+ :s_name "information_schema",
+ :system_object true,
+ :owner "postgres",
+ :size_bytes 253952}
+
+```
+:::
+
+
+### List all view objects in current database
+
+
+::: {.sourceClojure}
+```clojure
+(show-public (pgex/views db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>size_pretty</th><th>description</th><th>owned_by</th><th>size_plus_indexes</th><th>rows</th><th>oid</th><th>v_name</th><th>size_plus_indexes_bytes</th><th>s_name</th><th>system_object</th><th>view_type</th><th>size_bytes</th></tr></thead><tbody><tr><td>0 bytes</td><td></td><td>postgres</td><td>0 bytes</td><td>-1</td><td>19715</td><td>pg_stat_statements_info</td><td>0</td><td>public</td><td>false</td><td>view</td><td>0</td></tr><tr><td>0 bytes</td><td></td><td>postgres</td><td>0 bytes</td><td>-1</td><td>19726</td><td>pg_stat_statements</td><td>0</td><td>public</td><td>false</td><td>view</td><td>0</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:size_pretty "0 bytes",
+ :description nil,
+ :owned_by "postgres",
+ :size_plus_indexes "0 bytes",
+ :rows -1,
+ :oid 19715,
+ :v_name "pg_stat_statements_info",
+ :size_plus_indexes_bytes 0,
+ :s_name "public",
+ :system_object false,
+ :view_type "view",
+ :size_bytes 0}
+
+```
+:::
+
+
+### List all index objects in current database
+
+
+::: {.sourceClojure}
+```clojure
+(show-public (pgex/indexes db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>total_columns</th><th>unique_index</th><th>rows_indexed</th><th>oid</th><th>index_size_bytes</th><th>i_name</th><th>partial_index</th><th>index_size</th><th>key_columns</th><th>valid_index</th><th>s_name</th><th>system_object</th><th>primary_key</th><th>t_name</th></tr></thead><tbody><tr><td>1</td><td>true</td><td>10.0</td><td>19782</td><td>16384</td><td>pgbench_branches_pkey</td><td>false</td><td>16 kB</td><td>1</td><td>true</td><td>public</td><td>false</td><td>true</td><td>pgbench_branches</td></tr><tr><td>1</td><td>true</td><td>100.0</td><td>19784</td><td>16384</td><td>pgbench_tellers_pkey</td><td>false</td><td>16 kB</td><td>1</td><td>true</td><td>public</td><td>false</td><td>true</td><td>pgbench_tellers</td></tr><tr><td>1</td><td>true</td><td>1000000.0</td><td>19786</td><td>22487040</td><td>pgbench_accounts_pkey</td><td>false</td><td>21 MB</td><td>1</td><td>true</td><td>public</td><td>false</td><td>true</td><td>pgbench_accounts</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:total_columns 3,
+ :unique_index true,
+ :rows_indexed 0.0,
+ :oid 2696,
+ :index_size_bytes 32768,
+ :i_name "pg_statistic_relid_att_inh_index",
+ :partial_index false,
+ :index_size "32 kB",
+ :key_columns 3,
+ :valid_index true,
+ :s_name "pg_catalog",
+ :system_object true,
+ :primary_key true,
+ :t_name "pg_statistic"}
+
+```
+:::
+
+
+### List all database column objects
+
+
+::: {.sourceClojure}
+```clojure
+(show-public (pgex/columns db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>description</th><th>generated_column</th><th>source_type</th><th>data_type</th><th>c_name</th><th>position</th><th>s_name</th><th>system_object</th><th>default_value</th><th>t_name</th></tr></thead><tbody><tr><td></td><td>false</td><td>view</td><td>int8</td><td>dealloc</td><td>1</td><td>public</td><td>false</td><td></td><td>pg_stat_statements_info</td></tr><tr><td></td><td>false</td><td>view</td><td>timestamptz</td><td>stats_reset</td><td>2</td><td>public</td><td>false</td><td></td><td>pg_stat_statements_info</td></tr><tr><td></td><td>false</td><td>view</td><td>oid</td><td>userid</td><td>1</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>oid</td><td>dbid</td><td>2</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>bool</td><td>toplevel</td><td>3</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>queryid</td><td>4</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>text</td><td>query</td><td>5</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>plans</td><td>6</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>total_plan_time</td><td>7</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>min_plan_time</td><td>8</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>max_plan_time</td><td>9</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>mean_plan_time</td><td>10</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>stddev_plan_time</td><td>11</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>calls</td><td>12</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>total_exec_time</td><td>13</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>min_exec_time</td><td>14</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>max_exec_time</td><td>15</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>mean_exec_time</td><td>16</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>stddev_exec_time</td><td>17</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>rows</td><td>18</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>shared_blks_hit</td><td>19</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>shared_blks_read</td><td>20</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>shared_blks_dirtied</td><td>21</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>shared_blks_written</td><td>22</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>local_blks_hit</td><td>23</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>local_blks_read</td><td>24</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>local_blks_dirtied</td><td>25</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>local_blks_written</td><td>26</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>temp_blks_read</td><td>27</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>temp_blks_written</td><td>28</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>blk_read_time</td><td>29</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>blk_write_time</td><td>30</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>temp_blk_read_time</td><td>31</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>temp_blk_write_time</td><td>32</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>wal_records</td><td>33</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>wal_fpi</td><td>34</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>numeric</td><td>wal_bytes</td><td>35</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>jit_functions</td><td>36</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>jit_generation_time</td><td>37</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>jit_inlining_count</td><td>38</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>jit_inlining_time</td><td>39</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>jit_optimization_count</td><td>40</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>jit_optimization_time</td><td>41</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>int8</td><td>jit_emission_count</td><td>42</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>view</td><td>float8</td><td>jit_emission_time</td><td>43</td><td>public</td><td>false</td><td></td><td>pg_stat_statements</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>tid</td><td>1</td><td>public</td><td>false</td><td></td><td>pgbench_history</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>bid</td><td>2</td><td>public</td><td>false</td><td></td><td>pgbench_history</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>aid</td><td>3</td><td>public</td><td>false</td><td></td><td>pgbench_history</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>delta</td><td>4</td><td>public</td><td>false</td><td></td><td>pgbench_history</td></tr><tr><td></td><td>false</td><td>table</td><td>timestamp</td><td>mtime</td><td>5</td><td>public</td><td>false</td><td></td><td>pgbench_history</td></tr><tr><td></td><td>false</td><td>table</td><td>bpchar</td><td>filler</td><td>6</td><td>public</td><td>false</td><td></td><td>pgbench_history</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>tid</td><td>1</td><td>public</td><td>false</td><td></td><td>pgbench_tellers</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>bid</td><td>2</td><td>public</td><td>false</td><td></td><td>pgbench_tellers</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>tbalance</td><td>3</td><td>public</td><td>false</td><td></td><td>pgbench_tellers</td></tr><tr><td></td><td>false</td><td>table</td><td>bpchar</td><td>filler</td><td>4</td><td>public</td><td>false</td><td></td><td>pgbench_tellers</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>aid</td><td>1</td><td>public</td><td>false</td><td></td><td>pgbench_accounts</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>bid</td><td>2</td><td>public</td><td>false</td><td></td><td>pgbench_accounts</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>abalance</td><td>3</td><td>public</td><td>false</td><td></td><td>pgbench_accounts</td></tr><tr><td></td><td>false</td><td>table</td><td>bpchar</td><td>filler</td><td>4</td><td>public</td><td>false</td><td></td><td>pgbench_accounts</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>bid</td><td>1</td><td>public</td><td>false</td><td></td><td>pgbench_branches</td></tr><tr><td></td><td>false</td><td>table</td><td>int4</td><td>bbalance</td><td>2</td><td>public</td><td>false</td><td></td><td>pgbench_branches</td></tr><tr><td></td><td>false</td><td>table</td><td>bpchar</td><td>filler</td><td>3</td><td>public</td><td>false</td><td></td><td>pgbench_branches</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":true,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:description nil,
+ :generated_column false,
+ :source_type "table",
+ :data_type "oid",
+ :c_name "oid",
+ :position 1,
+ :s_name "pg_catalog",
+ :system_object true,
+ :default_value nil,
+ :t_name "pg_proc"}
+
+```
+:::
+
+
+### List all table objects in current database
+
+
+::: {.sourceClojure}
+```clojure
+(show-public (pgex/tables db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>size_pretty</th><th>description</th><th>owned_by</th><th>size_plus_indexes</th><th>rows</th><th>oid</th><th>data_type</th><th>size_plus_indexes_bytes</th><th>s_name</th><th>system_object</th><th>t_name</th><th>size_bytes</th><th>bytes_per_row</th></tr></thead><tbody><tr><td>144 kB</td><td></td><td>postgres</td><td>160 kB</td><td>10</td><td>19775</td><td>table</td><td>163840</td><td>public</td><td>false</td><td>pgbench_branches</td><td>147456</td><td>14746</td></tr><tr><td>256 kB</td><td></td><td>postgres</td><td>272 kB</td><td>100</td><td>19769</td><td>table</td><td>278528</td><td>public</td><td>false</td><td>pgbench_tellers</td><td>262144</td><td>2621</td></tr><tr><td>130 MB</td><td></td><td>postgres</td><td>152 MB</td><td>1000000</td><td>19772</td><td>table</td><td>158941184</td><td>public</td><td>false</td><td>pgbench_accounts</td><td>136454144</td><td>136</td></tr><tr><td>1800 kB</td><td></td><td>postgres</td><td>1800 kB</td><td>32000</td><td>19766</td><td>table</td><td>1843200</td><td>public</td><td>false</td><td>pgbench_history</td><td>1843200</td><td>58</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:size_pretty "280 kB",
+ :description nil,
+ :owned_by "postgres",
+ :size_plus_indexes "312 kB",
+ :rows 409,
+ :oid 2619,
+ :data_type "table",
+ :size_plus_indexes_bytes 319488,
+ :s_name "pg_catalog",
+ :system_object true,
+ :t_name "pg_statistic",
+ :size_bytes 286720,
+ :bytes_per_row 701}
+
+```
+:::
+
+
+### List all function objects in current database
+
+
+::: {.sourceClojure}
+```clojure
+(show-public (pgex/functions db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>description</th><th>f_name</th><th>source_code</th><th>owned_by</th><th>proc_security</th><th>result_data_types</th><th>access_privileges</th><th>argument_data_types</th><th>s_name</th><th>proc_language</th><th>system_object</th></tr></thead><tbody><tr><td></td><td>pg_stat_statements_reset</td><td>pg_stat_statements_reset_1_7</td><td>postgres</td><td>invoker</td><td>void</td><td>postgres=X/postgres</td><td>userid oid DEFAULT 0, dbid oid DEFAULT 0, queryid bigint DEFAULT 0</td><td>public</td><td>c</td><td>false</td></tr><tr><td></td><td>pg_stat_statements_info</td><td>pg_stat_statements_info</td><td>postgres</td><td>invoker</td><td>record</td><td></td><td>OUT dealloc bigint, OUT stats_reset timestamp with time zone</td><td>public</td><td>c</td><td>false</td></tr><tr><td></td><td>pg_stat_statements</td><td>pg_stat_statements_1_10</td><td>postgres</td><td>invoker</td><td>SETOF record</td><td></td><td>showtext boolean, OUT userid oid, OUT dbid oid, OUT toplevel boolean, OUT queryid bigint, OUT query text, OUT plans bigint, OUT total_plan_time double precision, OUT min_plan_time double precision, OUT max_plan_time double precision, OUT mean_plan_time double precision, OUT stddev_plan_time double precision, OUT calls bigint, OUT total_exec_time double precision, OUT min_exec_time double precision, OUT max_exec_time double precision, OUT mean_exec_time double precision, OUT stddev_exec_time double precision, OUT rows bigint, OUT shared_blks_hit bigint, OUT shared_blks_read bigint, OUT shared_blks_dirtied bigint, OUT shared_blks_written bigint, OUT local_blks_hit bigint, OUT local_blks_read bigint, OUT local_blks_dirtied bigint, OUT local_blks_written bigint, OUT temp_blks_read bigint, OUT temp_blks_written bigint, OUT blk_read_time double precision, OUT blk_write_time double precision, OUT temp_blk_read_time double precision, OUT temp_blk_write_time double precision, OUT wal_records bigint, OUT wal_fpi bigint, OUT wal_bytes numeric, OUT jit_functions bigint, OUT jit_generation_time double precision, OUT jit_inlining_count bigint, OUT jit_inlining_time double precision, OUT jit_optimization_count bigint, OUT jit_optimization_time double precision, OUT jit_emission_count bigint, OUT jit_emission_time double precision</td><td>public</td><td>c</td><td>false</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:description "I/O",
+ :f_name "boolin",
+ :source_code "boolin",
+ :owned_by "postgres",
+ :proc_security "invoker",
+ :result_data_types "boolean",
+ :access_privileges nil,
+ :argument_data_types "cstring",
+ :s_name "pg_catalog",
+ :proc_language "internal",
+ :system_object true}
+
+```
+:::
+
+
+
+
+## Full map of diagnostic statistics
+
+
+
+::: {.sourceClojure}
+```clojure
+(def stats (pgex/read-stats db {:limit 100}))
+```
+:::
+
+
+
+::: {.sourceClojure}
+```clojure
+(keys stats)
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+(:duplicate-indexes
+ :db-settings
+ :locks
+ :vacuum-stats
+ :index-usage
+ :total-index-size
+ :cache-hit
+ :records-rank
+ :null-indexes
+ :index-cache-hit
+ :all-locks
+ :outliers
+ :long-running-queries
+ :extensions
+ :total-table-size
+ :unused-indexes
+ :bloat
+ :calls
+ :table-size
+ :connections
+ :table-cache-hit
+ :table-indexes-size
+ :blocking
+ :seq-scans
+ :index-size)
+
+```
+:::
+
+
+### Dead rows and whether an automatic vacuum is expected to be triggered
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/vacuum-stats db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>table</th><th>last_vacuum</th><th>last_autovacuum</th><th>rowcount</th><th>dead_rowcount</th><th>autovacuum_threshold</th><th>expect_autovacuum</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>2024-07-11 09:08</td><td>2024-07-11 09:09</td><td>10.0</td><td>0</td><td>50.2</td><td></td></tr><tr><td>public</td><td>pgbench_tellers</td><td>2024-07-11 09:08</td><td>2024-07-11 09:09</td><td>100.0</td><td>0</td><td>52.0</td><td></td></tr><tr><td>public</td><td>pgbench_accounts</td><td>2024-07-11 09:08</td><td>2024-07-11 09:09</td><td>1000000.0</td><td>0</td><td>20050.0</td><td></td></tr><tr><td>public</td><td>pgbench_history</td><td>2024-07-11 09:08</td><td>2024-07-11 09:09</td><td>32000.0</td><td>0</td><td>690.0</td><td></td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public",
+ :table "pgbench_branches",
+ :last_vacuum "2024-07-11 09:08",
+ :last_autovacuum "2024-07-11 09:09",
+ :rowcount 10.0,
+ :dead_rowcount 0,
+ :autovacuum_threshold 50.2,
+ :expect_autovacuum nil}
+
+```
+:::
+
+
+### Index hit rate (effective databases are at 99% and up)
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/index-usage db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>percent_of_times_index_used</th><th>rows_in_table</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>99</td><td>1000000</td></tr><tr><td>public</td><td>pgbench_history</td><td></td><td>32000</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>57</td><td>100</td></tr><tr><td>public</td><td>pgbench_branches</td><td>47</td><td>10</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public",
+ :name "pgbench_accounts",
+ :percent_of_times_index_used 99,
+ :rows_in_table 1000000}
+
+```
+:::
+
+
+### Total size of all indexes in MB
+
+
+::: {.sourceClojure}
+```clojure
+(pgex/total-index-size db)
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+[{:size 22519808}]
+
+```
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:size 22519808}
+
+```
+:::
+
+
+### Index and table hit rate
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/cache-hit db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>name</th><th>ratio</th></tr></thead><tbody><tr><td>index hit rate</td><td>0.99319155048877683195</td></tr><tr><td>table hit rate</td><td>0.98325516438754727960</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:name "index hit rate", :ratio 0.99319155048877683195M}
+
+```
+:::
+
+
+### All tables and the number of rows in each ordered by number of rows descending
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/records-rank db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>estimated_count</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>1000000</td></tr><tr><td>public</td><td>pgbench_history</td><td>32000</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>100</td></tr><tr><td>public</td><td>pgbench_branches</td><td>10</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public", :name "pgbench_accounts", :estimated_count 1000000}
+
+```
+:::
+
+
+### Calculates your cache hit rate for reading indexes
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/index-cache-hit db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>buffer_hits</th><th>block_reads</th><th>total_read</th><th>ratio</th></tr></thead><tbody><tr><td>public</td><td>pgbench_history</td><td>0</td><td>0</td><td>0</td><td>0.0</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>37366</td><td>2</td><td>37368</td><td>0.9999464782701777</td></tr><tr><td>public</td><td>pgbench_branches</td><td>31113</td><td>2</td><td>31115</td><td>0.9999357223204243</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>332535</td><td>2745</td><td>335280</td><td>0.9918128131710809</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public",
+ :name "pgbench_history",
+ :buffer_hits 0,
+ :block_reads 0,
+ :total_read 0,
+ :ratio 0.0}
+
+```
+:::
+
+
+### Queries that have longest execution time in aggregate.
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/outliers db {:limit 10}))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>query</th><th>exec_time_ms</th><th>prop_exec_time</th><th>calls</th><th>sync_io_time_ms</th></tr></thead><tbody><tr><td>UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2</td><td>12927.214</td><td>0.6611315873116744</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2</td><td>56300.972</td><td>0.28002054315890357</td><td>32000</td><td>0.000</td></tr><tr><td>INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)</td><td>4857.433</td><td>0.02415910197939299</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2</td><td>1595.393</td><td>0.007934905239326415</td><td>32000</td><td>0.000</td></tr><tr><td>copy pgbench_accounts from stdin with (freeze on)</td><td>861.353</td><td>0.004284058693936155</td><td>1</td><td>0.000</td></tr><tr><td>CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder</td><td>801.851</td><td>0.003988113665878356</td><td>1</td><td>0.000</td></tr><tr><td>CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder</td><td>754.769</td><td>0.003753944251501428</td><td>1</td><td>0.000</td></tr><tr><td>CREATE EXTENSION IF NOT EXISTS postgis</td><td>383.233</td><td>0.0019060634875748212</td><td>1</td><td>0.000</td></tr><tr><td>CREATE EXTENSION IF NOT EXISTS postgis</td><td>375.006</td><td>0.0018651426830227464</td><td>1</td><td>0.000</td></tr><tr><td>SELECT abalance FROM pgbench_accounts WHERE aid = $1</td><td>357.088</td><td>0.001776025713694208</td><td>32000</td><td>0.000</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:query
+ "UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2",
+ :exec_time_ms 12927.214M,
+ :prop_exec_time 0.6611957059437592,
+ :calls 32000,
+ :sync_io_time_ms 0.000M}
+
+```
+:::
+
+
+### Available and installed extensions
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/extensions db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>name</th><th>default_version</th><th>installed_version</th><th>comment</th></tr></thead><tbody><tr><td>plpgsql</td><td>1.0</td><td>1.0</td><td>PL/pgSQL procedural language</td></tr><tr><td>pg_stat_statements</td><td>1.10</td><td>1.10</td><td>track planning and execution statistics of all SQL statements executed</td></tr><tr><td>ltree</td><td>1.2</td><td></td><td>data type for hierarchical tree-like structures</td></tr><tr><td>autoinc</td><td>1.0</td><td></td><td>functions for autoincrementing fields</td></tr><tr><td>lo</td><td>1.1</td><td></td><td>Large Object maintenance</td></tr><tr><td>tcn</td><td>1.0</td><td></td><td>Triggered change notifications</td></tr><tr><td>pgrowlocks</td><td>1.2</td><td></td><td>show row-level locking information</td></tr><tr><td>hstore</td><td>1.8</td><td></td><td>data type for storing sets of (key, value) pairs</td></tr><tr><td>file_fdw</td><td>1.0</td><td></td><td>foreign-data wrapper for flat file access</td></tr><tr><td>tsm_system_time</td><td>1.0</td><td></td><td>TABLESAMPLE method which accepts time in milliseconds as a limit</td></tr><tr><td>citext</td><td>1.6</td><td></td><td>data type for case-insensitive character strings</td></tr><tr><td>pgstattuple</td><td>1.5</td><td></td><td>show tuple-level statistics</td></tr><tr><td>pg_surgery</td><td>1.0</td><td></td><td>extension to perform surgery on a damaged relation</td></tr><tr><td>tablefunc</td><td>1.0</td><td></td><td>functions that manipulate whole tables, including crosstab</td></tr><tr><td>bloom</td><td>1.0</td><td></td><td>bloom access method - signature file based index</td></tr><tr><td>dblink</td><td>1.2</td><td></td><td>connect to other PostgreSQL databases from within a database</td></tr><tr><td>sslinfo</td><td>1.2</td><td></td><td>information about SSL certificates</td></tr><tr><td>refint</td><td>1.0</td><td></td><td>functions for implementing referential integrity (obsolete)</td></tr><tr><td>pg_walinspect</td><td>1.1</td><td></td><td>functions to inspect contents of PostgreSQL Write-Ahead Log</td></tr><tr><td>amcheck</td><td>1.3</td><td></td><td>functions for verifying relation integrity</td></tr><tr><td>adminpack</td><td>2.1</td><td></td><td>administrative functions for PostgreSQL</td></tr><tr><td>earthdistance</td><td>1.1</td><td></td><td>calculate great-circle distances on the surface of the Earth</td></tr><tr><td>pg_trgm</td><td>1.6</td><td></td><td>text similarity measurement and index searching based on trigrams</td></tr><tr><td>uuid-ossp</td><td>1.1</td><td></td><td>generate universally unique identifiers (UUIDs)</td></tr><tr><td>unaccent</td><td>1.1</td><td></td><td>text search dictionary that removes accents</td></tr><tr><td>seg</td><td>1.4</td><td></td><td>data type for representing line segments or floating-point intervals</td></tr><tr><td>moddatetime</td><td>1.0</td><td></td><td>functions for tracking last modification time</td></tr><tr><td>intagg</td><td>1.1</td><td></td><td>integer aggregator and enumerator (obsolete)</td></tr><tr><td>dict_xsyn</td><td>1.0</td><td></td><td>text search dictionary template for extended synonym processing</td></tr><tr><td>postgres_fdw</td><td>1.1</td><td></td><td>foreign-data wrapper for remote PostgreSQL servers</td></tr><tr><td>pg_visibility</td><td>1.2</td><td></td><td>examine the visibility map (VM) and page-level visibility info</td></tr><tr><td>btree_gist</td><td>1.7</td><td></td><td>support for indexing common datatypes in GiST</td></tr><tr><td>old_snapshot</td><td>1.0</td><td></td><td>utilities in support of old_snapshot_threshold</td></tr><tr><td>pg_prewarm</td><td>1.2</td><td></td><td>prewarm relation data</td></tr><tr><td>cube</td><td>1.5</td><td></td><td>data type for multidimensional cubes</td></tr><tr><td>isn</td><td>1.2</td><td></td><td>data types for international product numbering standards</td></tr><tr><td>xml2</td><td>1.1</td><td></td><td>XPath querying and XSLT</td></tr><tr><td>pg_freespacemap</td><td>1.2</td><td></td><td>examine the free space map (FSM)</td></tr><tr><td>intarray</td><td>1.5</td><td></td><td>functions, operators, and index support for 1-D arrays of integers</td></tr><tr><td>dict_int</td><td>1.0</td><td></td><td>text search dictionary template for integers</td></tr><tr><td>tsm_system_rows</td><td>1.0</td><td></td><td>TABLESAMPLE method which accepts number of rows as a limit</td></tr><tr><td>fuzzystrmatch</td><td>1.2</td><td></td><td>determine similarities and distance between strings</td></tr><tr><td>btree_gin</td><td>1.3</td><td></td><td>support for indexing common datatypes in GIN</td></tr><tr><td>pgcrypto</td><td>1.3</td><td></td><td>cryptographic functions</td></tr><tr><td>pageinspect</td><td>1.12</td><td></td><td>inspect the contents of database pages at a low level</td></tr><tr><td>postgis_topology-3</td><td>3.4.2</td><td></td><td>PostGIS topology spatial types and functions</td></tr><tr><td>postgis_raster</td><td>3.4.2</td><td></td><td>PostGIS raster types and functions</td></tr><tr><td>address_standardizer</td><td>3.4.2</td><td></td><td>Used to parse an address into constituent elements. Generally used to support geocoding address normalization step.</td></tr><tr><td>address_standardizer-3</td><td>3.4.2</td><td></td><td>Used to parse an address into constituent elements. Generally used to support geocoding address normalization step.</td></tr><tr><td>postgis_sfcgal</td><td>3.4.2</td><td></td><td>PostGIS SFCGAL functions</td></tr><tr><td>postgis</td><td>3.4.2</td><td></td><td>PostGIS geometry and geography spatial types and functions</td></tr><tr><td>postgis_tiger_geocoder</td><td>3.4.2</td><td></td><td>PostGIS tiger geocoder and reverse geocoder</td></tr><tr><td>postgis_raster-3</td><td>3.4.2</td><td></td><td>PostGIS raster types and functions</td></tr><tr><td>address_standardizer_data_us-3</td><td>3.4.2</td><td></td><td>Address Standardizer US dataset example</td></tr><tr><td>postgis_tiger_geocoder-3</td><td>3.4.2</td><td></td><td>PostGIS tiger geocoder and reverse geocoder</td></tr><tr><td>postgis_sfcgal-3</td><td>3.4.2</td><td></td><td>PostGIS SFCGAL functions</td></tr><tr><td>postgis-3</td><td>3.4.2</td><td></td><td>PostGIS geometry and geography spatial types and functions</td></tr><tr><td>postgis_topology</td><td>3.4.2</td><td></td><td>PostGIS topology spatial types and functions</td></tr><tr><td>pg_buffercache</td><td>1.4</td><td></td><td>examine the shared buffer cache</td></tr><tr><td>address_standardizer_data_us</td><td>3.4.2</td><td></td><td>Address Standardizer US dataset example</td></tr><tr><td>insert_username</td><td>1.0</td><td></td><td>functions for tracking who changed a table</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":true,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:name "plpgsql",
+ :default_version "1.0",
+ :installed_version "1.0",
+ :comment "PL/pgSQL procedural language"}
+
+```
+:::
+
+
+### Size of the tables (including indexes), descending by size
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/total-table-size db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>158941184</td></tr><tr><td>public</td><td>pgbench_history</td><td>1843200</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>278528</td></tr><tr><td>public</td><td>pgbench_branches</td><td>163840</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public", :name "pgbench_accounts", :size 158941184}
+
+```
+:::
+
+
+### Table and index bloat in your database ordered by most wasteful
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/bloat db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>type</th><th>schemaname</th><th>object_name</th><th>bloat</th><th>waste</th></tr></thead><tbody><tr><td>table</td><td>public</td><td>pgbench_accounts</td><td>1.1</td><td>8069120</td></tr><tr><td>table</td><td>public</td><td>pgbench_tellers</td><td>28.0</td><td>221184</td></tr><tr><td>table</td><td>public</td><td>pgbench_branches</td><td>14.0</td><td>106496</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_config_map::pg_ts_config_map_index</td><td>2.0</td><td>16384</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_amproc::pg_amproc_fam_proc_index</td><td>1.7</td><td>16384</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_class</td><td>1.2</td><td>16384</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_range::pg_range_rngmultitypid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_auth_members::pg_auth_members_grantor_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_auth_members::pg_auth_members_member_role_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_auth_members::pg_auth_members_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_auth_members::pg_auth_members_role_member_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_authid::pg_authid_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_authid::pg_authid_rolname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_cast::pg_cast_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_cast::pg_cast_source_target_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_namespace::pg_namespace_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_config::pg_ts_config_cfgname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_tablespace::pg_tablespace_spcname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_tablespace::pg_tablespace_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_shdescription::pg_shdescription_o_c_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_range::pg_range_rngtypid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_extension::pg_extension_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_dict::pg_ts_dict_dictname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_language::pg_language_name_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_language::pg_language_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_namespace::pg_namespace_nspname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_config::pg_ts_config_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>public</td><td>pgbench_tellers::pgbench_tellers_pkey</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>public</td><td>pgbench_branches::pgbench_branches_pkey</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_template::pg_ts_template_tmplname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_template::pg_ts_template_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_parser::pg_ts_parser_prsname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_parser::pg_ts_parser_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_am::pg_am_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_am::pg_am_name_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_database::pg_database_datname_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_database::pg_database_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_ts_dict::pg_ts_dict_oid_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_extension::pg_extension_name_index</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_amproc::pg_amproc_oid_index</td><td>1.3</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_amop::pg_amop_fam_strat_index</td><td>1.2</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_amop::pg_amop_opr_fam_index</td><td>1.2</td><td>8192</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_depend</td><td>1.1</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_depend::pg_depend_depender_index</td><td>1.1</td><td>8192</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_description</td><td>1.0</td><td>8192</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_conversion::pg_conversion_default_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_amop::pg_amop_oid_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_aggregate::pg_aggregate_fnoid_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_conversion::pg_conversion_name_nsp_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_conversion::pg_conversion_oid_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_depend::pg_depend_reference_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_init_privs::pg_init_privs_o_c_o_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_opfamily::pg_opfamily_am_name_nsp_index</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_opfamily::pg_opfamily_oid_index</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_am</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_amop</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_amproc</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_attribute</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_auth_members</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_authid</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_cast</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_constraint</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_conversion</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_database</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_extension</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_index</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_init_privs</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_language</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_namespace</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_opclass</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_operator</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_opfamily</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_proc</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_range</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_rewrite</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_shdescription</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_tablespace</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_ts_config</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_ts_config_map</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_ts_dict</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_ts_parser</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_ts_template</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_description::pg_description_o_c_o_index</td><td>0.9</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_collation</td><td>0.9</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_type</td><td>0.9</td><td>0</td></tr><tr><td>table</td><td>public</td><td>pgbench_history</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_opclass::pg_opclass_oid_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_opclass::pg_opclass_am_name_nsp_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_index::pg_index_indrelid_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_index::pg_index_indexrelid_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_constraint::pg_constraint_oid_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_constraint::pg_constraint_contypid_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_constraint::pg_constraint_conrelid_contypid_conname_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_constraint::pg_constraint_conparentid_index</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_constraint::pg_constraint_conname_nsp_index</td><td>0.7</td><td>0</td></tr><tr><td>table</td><td>pg_catalog</td><td>pg_aggregate</td><td>0.7</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_class::pg_class_relname_nsp_index</td><td>0.6</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_collation::pg_collation_name_enc_nsp_index</td><td>0.5</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_operator::pg_operator_oprname_l_r_n_index</td><td>0.5</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_collation::pg_collation_oid_index</td><td>0.5</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_proc::pg_proc_proname_args_nsp_index</td><td>0.4</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_type::pg_type_typname_nsp_index</td><td>0.4</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_operator::pg_operator_oid_index</td><td>0.4</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_attribute::pg_attribute_relid_attnam_index</td><td>0.4</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_class::pg_class_oid_index</td><td>0.4</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_type::pg_type_oid_index</td><td>0.3</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_attribute::pg_attribute_relid_attnum_index</td><td>0.2</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_rewrite::pg_rewrite_oid_index</td><td>0.2</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_rewrite::pg_rewrite_rel_rulename_index</td><td>0.2</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_class::pg_class_tblspc_relfilenode_index</td><td>0.2</td><td>0</td></tr><tr><td>index</td><td>public</td><td>pgbench_accounts::pgbench_accounts_pkey</td><td>0.2</td><td>0</td></tr><tr><td>index</td><td>pg_catalog</td><td>pg_proc::pg_proc_oid_index</td><td>0.1</td><td>0</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":true,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:type "table",
+ :schemaname "public",
+ :object_name "pgbench_accounts",
+ :bloat 1.1M,
+ :waste 8069120}
+
+```
+:::
+
+
+### Queries that have the highest frequency of execution
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/calls db {:limit 10}))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>query</th><th>exec_time_ms</th><th>exec_time_ratio</th><th>calls</th><th>sync_io_time_ms</th></tr></thead><tbody><tr><td>begin</td><td>18.790</td><td>9.344053884633071E-5</td><td>32001</td><td>0.000</td></tr><tr><td>commit</td><td>16.909</td><td>8.408883014320269E-5</td><td>32001</td><td>0.000</td></tr><tr><td>UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2</td><td>56300.972</td><td>0.2799803284828244</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2</td><td>12927.214</td><td>0.6610366400184169</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2</td><td>1595.393</td><td>0.007933765681348567</td><td>32000</td><td>0.000</td></tr><tr><td>INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)</td><td>4857.433</td><td>0.024155632410876676</td><td>32000</td><td>0.000</td></tr><tr><td>SELECT abalance FROM pgbench_accounts WHERE aid = $1</td><td>357.088</td><td>0.0017757706527691105</td><td>32000</td><td>0.000</td></tr><tr><td>SET extra_float_digits = 3</td><td>2.040</td><td>1.0145014050072743E-5</td><td>193</td><td>0.000</td></tr><tr><td>SET application_name = 'PostgreSQL JDBC Driver'</td><td>1.073</td><td>5.336477172497848E-6</td><td>193</td><td>0.000</td></tr><tr><td>insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)</td><td>0.384</td><td>1.909149427612044E-6</td><td>100</td><td>0.000</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:query "begin",
+ :exec_time_ms 18.790M,
+ :exec_time_ratio 9.345651768536889E-5,
+ :calls 32001,
+ :sync_io_time_ms 0.000M}
+
+```
+:::
+
+
+### Size of the tables (excluding indexes), descending by size
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/table-size db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>136454144</td></tr><tr><td>public</td><td>pgbench_history</td><td>1843200</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>262144</td></tr><tr><td>public</td><td>pgbench_branches</td><td>147456</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public", :name "pgbench_accounts", :size 136454144}
+
+```
+:::
+
+
+### Returns the list of all active database connections
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/connections db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>username</th><th>client_address</th><th>application_name</th></tr></thead><tbody><tr><td>postgres</td><td>172.20.0.1/32</td><td>psql</td></tr><tr><td>postgres</td><td>172.20.0.1/32</td><td>PostgreSQL JDBC Driver</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:username "postgres",
+ :client_address "172.20.0.1/32",
+ :application_name "psql"}
+
+```
+:::
+
+
+### Calculates your cache hit rate for reading tables
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/table-cache-hit db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>buffer_hits</th><th>block_reads</th><th>total_read</th><th>ratio</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>671318</td><td>0</td><td>671318</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>488771</td><td>0</td><td>488771</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_history</td><td>129424</td><td>0</td><td>129424</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>400211</td><td>28776</td><td>428987</td><td>0.9329210442274475</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public",
+ :name "pgbench_branches",
+ :buffer_hits 671318,
+ :block_reads 0,
+ :total_read 671318,
+ :ratio 1.0}
+
+```
+:::
+
+
+### Total size of all the indexes on each table, descending by size
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/table-indexes-size db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>table</th><th>index_size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>22487040</td></tr><tr><td>public</td><td>pgbench_branches</td><td>16384</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>16384</td></tr><tr><td>public</td><td>pgbench_history</td><td>0</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public", :table "pgbench_accounts", :index_size 22487040}
+
+```
+:::
+
+
+### Count of sequential scans by table descending by order
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/seq-scans db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>count</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>33352</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>27304</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>4</td></tr><tr><td>public</td><td>pgbench_history</td><td>3</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public", :name "pgbench_branches", :count 33352}
+
+```
+:::
+
+
+### The size of indexes, descending by size
+
+
+::: {.sourceClojure}
+```clojure
+(show (pgex/index-size db))
+```
+:::
+
+
+::: {.clay-table}
+::: {.clay-table}
+
+```{=html}
+<table class="table table-hover table-responsive"><thead><tr><th>schema</th><th>name</th><th>size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts_pkey</td><td>22487040</td></tr><tr><td>public</td><td>pgbench_branches_pkey</td><td>16384</td></tr><tr><td>public</td><td>pgbench_tellers_pkey</td><td>16384</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+```
+
+:::
+
+:::
+
+
+example row
+
+
+::: {.printedClojure}
+```clojure
+{:schema "public", :name "pgbench_accounts_pkey", :size 22487040}
+
+```
+:::
+
+
+
+## The Kill Switch
+
+The only mutating function in the entire library
+is a kill switch for closing all connections,
+vital if you need to take a heavily-used database
+down for maintenance or emergency.
+
+```clojure
+(pgex/kill-all! db)  ;; use with caution
+```
+
+
+## Diagnostics
+
+Query and and print all default diagnostics
+
+
+::: {.sourceClojure}
+```clojure
+(for [d (pgex/diagnose (pgex/read-stats db))]
+  (:message d))
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+("✓  Passed :bloat public.pgbench_accounts"
+ "! Warning :bloat public.pgbench_tellers Bloated tables\n{:type \"table\", :schemaname \"public\", :object_name \"pgbench_tellers\", :bloat 28.0M, :waste 221184}"
+ "! Warning :bloat public.pgbench_branches Bloated tables\n{:type \"table\", :schemaname \"public\", :object_name \"pgbench_branches\", :bloat 14.0M, :waste 106496}"
+ "✓  Passed :bloat pg_catalog.pg_ts_config_map::pg_ts_config_map_index"
+ "✓  Passed :bloat pg_catalog.pg_amproc::pg_amproc_fam_proc_index"
+ "✓  Passed :bloat pg_catalog.pg_class"
+ "✓  Passed :bloat pg_catalog.pg_range::pg_range_rngmultitypid_index"
+ "✓  Passed :bloat pg_catalog.pg_auth_members::pg_auth_members_grantor_index"
+ "✓  Passed :bloat pg_catalog.pg_auth_members::pg_auth_members_member_role_index"
+ "✓  Passed :bloat pg_catalog.pg_auth_members::pg_auth_members_oid_index"
+ "✓  Passed :index-cache-hit public.pgbench_history"
+ "✓  Passed :index-cache-hit public.pgbench_tellers"
+ "✓  Passed :index-cache-hit public.pgbench_branches"
+ "✓  Passed :index-cache-hit public.pgbench_accounts"
+ "! Warning :outliers UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2 Detected slow query\n{:query \"UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2\", :exec_time_ms 12927.214M, :prop_exec_time 0.6609846146270376, :calls 32000, :sync_io_time_ms 0.000M}"
+ "✓  Passed :outliers UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2"
+ "✓  Passed :outliers INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)"
+ "✓  Passed :outliers UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2"
+ "✓  Passed :outliers copy pgbench_accounts from stdin with (freeze on)"
+ "✓  Passed :outliers CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder"
+ "✓  Passed :outliers CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder"
+ "✓  Passed :outliers CREATE EXTENSION IF NOT EXISTS postgis"
+ "✓  Passed :outliers CREATE EXTENSION IF NOT EXISTS postgis"
+ "✓  Passed :outliers SELECT abalance FROM pgbench_accounts WHERE aid = $1"
+ "✓  Passed :table-cache-hit public.pgbench_branches"
+ "✓  Passed :table-cache-hit public.pgbench_tellers"
+ "✓  Passed :table-cache-hit public.pgbench_history"
+ "! Warning :table-cache-hit public.pgbench_accounts Table sees too much block IO relative to buffer cache hit\n{:schema \"public\", :name \"pgbench_accounts\", :buffer_hits 400211, :block_reads 28776, :total_read 428987, :ratio 0.9329210442274475}")
+
+```
+:::
+
+
+Or just the warnings
+
+
+::: {.sourceClojure}
+```clojure
+(for [w (pgex/diagnose-warnings (pgex/read-stats db))]
+  (:message w))
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+("! Warning :bloat public.pgbench_tellers Bloated tables\n{:type \"table\", :schemaname \"public\", :object_name \"pgbench_tellers\", :bloat 28.0M, :waste 221184}"
+ "! Warning :bloat public.pgbench_branches Bloated tables\n{:type \"table\", :schemaname \"public\", :object_name \"pgbench_branches\", :bloat 14.0M, :waste 106496}"
+ "! Warning :outliers UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2 Detected slow query\n{:query \"UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2\", :exec_time_ms 12927.214M, :prop_exec_time 0.6608529285154046, :calls 32000, :sync_io_time_ms 0.000M}"
+ "! Warning :table-cache-hit public.pgbench_accounts Table sees too much block IO relative to buffer cache hit\n{:schema \"public\", :name \"pgbench_accounts\", :buffer_hits 400211, :block_reads 28776, :total_read 428987, :ratio 0.9329210442274475}")
+
+```
+:::
+
+
+Create your own diagnostics
+
+
+::: {.sourceClojure}
+```clojure
+(def unrealistic-expectations
+  {:table-cache-hit
+   {:pred #(> (:ratio %) 0.999)
+    :onfalse "The cache hit ratio is not as insanely high as I'd like."
+    :idfn :name}})
+```
+:::
+
+
+
+::: {.sourceClojure}
+```clojure
+(for [w (pgex/diagnose-warnings
+         (pgex/read-stats db)
+         :diagnostic-fns unrealistic-expectations)]
+  (:message w))
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+("! Warning :table-cache-hit pgbench_accounts The cache hit ratio is not as insanely high as I'd like.\n{:schema \"public\", :name \"pgbench_accounts\", :buffer_hits 400211, :block_reads 28776, :total_read 428987, :ratio 0.9329210442274475}")
+
+```
+:::
+
+
+
+## Just for fun
+
+
+::: {.sourceClojure}
+```clojure
+(for [m (pgex/mandelbrot db)]
+  (:art m))
+```
+:::
+
+
+
+::: {.printedClojure}
+```clojure
+("             ....................................................................................     "
+ "            .......................................................................................   "
+ "           .........................................................................................  "
+ "          ........................................................................................... "
+ "        ....................................................,,,,,,,,,................................."
+ "       ................................................,,,,,,,,,,,,,,,,,,............................."
+ "      ..............................................,,,,,,,,,,,,,,,,,,,,,,,,.........................."
+ "     ............................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,........................"
+ "     ..........................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,......................"
+ "    .........................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,...................."
+ "   ........................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,..................."
+ "  .......................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,................."
+ " .......................................,,,,,,,,,,,,,,,,,,,,,,,,--,,,,,,,,,,,,,,,,,,,,................"
+ "......................................,,,,,,,,,,,,,,,,,,,,,,,,,,-+--,,,,,,,,,,,,,,,,,,,..............."
+ "....................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----,,,,,,,,,,,,,,,,,,,.............."
+ "...................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,--- -----,,,,,,,,,,,,,,,,,............."
+ ".................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---++--++,,,,,,,,,,,,,,,,,,............"
+ "................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----%++---,,,,,,,,,,,,,,,,,............"
+ "..............................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----+%----,,,,,,,,,,,,,,,,,,..........."
+ ".............................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,----- %%+----,,,,,,,,,,,,,,,,,,.........."
+ "...........................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---%-+%   ----,,,,,,,,,,,,,,,,,,,........."
+ "..........................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---+ +##  %+%---,,,,,,,,,,,,,,,,,,........."
+ "........................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----#      # +---,,,,,,,,,,,,,,,,,,........"
+ ".......................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-------%       %-----,,,,,,,,,,,,,,,,,........"
+ ".....................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---------+         ------,,,,,,,,,,,,,,,,,......."
+ "....................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----------+@       +-----------,,,,,,,,,,,,......."
+ "..................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,----@-------++       ++-----------,,,,,,,,,,,,......"
+ ".................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,--+@% ---+ +@%%@     %%+@+@%------+-,,,,,,,,,,,......"
+ "................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,----  # ++%               % @-----++--,,,,,,,,,,,....."
+ "..............,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,----+    %                  %%++ %+%@-,,,,,,,,,,,....."
+ ".............,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----+#                       #%    ++-,,,,,,,,,,,,...."
+ "............,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,------+                             @---,,,,,,,,,,,,...."
+ "..........,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-------++%                             ---,,,,,,,,,,,,...."
+ ".........,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,--------+ +                             %+---,,,,,,,,,,,,,..."
+ "........,,,,,,,,,,,,,,,,,,,,,--------------------@                                +----,,,,,,,,,,,,..."
+ ".......,,,,,,,,,,,,,,,,,,,,,,- +-----------------+                                 ----,,,,,,,,,,,,..."
+ ".......,,,,,,,,,,,,,,,,,,,,,--++------+---------+%                                 +++--,,,,,,,,,,,,.."
+ "......,,,,,,,,,,,,,,,,,,,,,,--%+-----++---------                                     #+-,,,,,,,,,,,,.."
+ ".....,,,,,,,,,,,,,,,,,,,,,,----#%++--+@ -+-----+%                                     --,,,,,,,,,,,,.."
+ ".....,,,,,,,,,,,,,,,,,,,,,,-----+## ++@ + +----%                                    +--,,,,,,,,,,,,,.."
+ "....,,,,,,,,,,,,,,,,,,,,,,------+@  @     @@++++#                                   +--,,,,,,,,,,,,,.."
+ "....,,,,,,,,,,,,,,,,,,,,,-------%           #++%                                      -,,,,,,,,,,,,,.."
+ "...,,,,,,,,,,,,,,,,,,,,,------++%#           %%@                                     %-,,,,,,,,,,,,,,."
+ "...,,,,,,,,,,,,,,,,,,,--------+               %                                     +--,,,,,,,,,,,,,,."
+ "...,,,,,,,,,,,,,,,,,,-----+--++@              #                                      --,,,,,,,,,,,,,,."
+ "..,,,,,,,,,,,,,,,,,-------%+++%                                                    @--,,,,,,,,,,,,,,,."
+ "..,,,,,,,,,,,-------------+ @#@                                                    ---,,,,,,,,,,,,,,,."
+ "..,,,,,,,,,---@--------@-+%                                                       +---,,,,,,,,,,,,,,,."
+ "..,,,,,------- +-++++-+%%%                                                       +----,,,,,,,,,,,,,,,."
+ "..,,,,,,------%--------++%                                                       +----,,,,,,,,,,,,,,,."
+ "..,,,,,,,,,,--+----------++#                                                       ---,,,,,,,,,,,,,,,."
+ "..,,,,,,,,,,,,------------+@@@%                                                    +--,,,,,,,,,,,,,,,."
+ "..,,,,,,,,,,,,,,,,,------- +++%                                                    %--,,,,,,,,,,,,,,,."
+ "...,,,,,,,,,,,,,,,,,,---------+@              @                                      --,,,,,,,,,,,,,,."
+ "...,,,,,,,,,,,,,,,,,,,,------- #              %@                                    +--,,,,,,,,,,,,,,."
+ "...,,,,,,,,,,,,,,,,,,,,,-------++@           %+                                      %-,,,,,,,,,,,,,,."
+ "....,,,,,,,,,,,,,,,,,,,,,-------            %++%                                     %-,,,,,,,,,,,,,.."
+ "....,,,,,,,,,,,,,,,,,,,,,,------+#  %#   #@ ++++                                    +--,,,,,,,,,,,,,.."
+ ".....,,,,,,,,,,,,,,,,,,,,,,-----+ %%++% +@+----+                                    +--,,,,,,,,,,,,,.."
+ ".....,,,,,,,,,,,,,,,,,,,,,,,---%+++--+#+--------%                                    #--,,,,,,,,,,,,.."
+ "......,,,,,,,,,,,,,,,,,,,,,,--++-----%%---------                                    @#--,,,,,,,,,,,,.."
+ ".......,,,,,,,,,,,,,,,,,,,,,---------------------+@                                +-++,,,,,,,,,,,,..."
+ "........,,,,,,,,,,,,,,,,,,,,,--------------------+                                 ----,,,,,,,,,,,,..."
+ ".........,,,,,,,,,,,,,,,,,,,,----,,,-------------                                #+----,,,,,,,,,,,,..."
+ "..........,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-------+ +                              +---,,,,,,,,,,,,,..."
+ "...........,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,--------+%#                           #---,,,,,,,,,,,,...."
+ "............,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,------+#                        @   @---,,,,,,,,,,,,...."
+ ".............,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----+#                        +    @--,,,,,,,,,,,,...."
+ "..............,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---+%   %+@                 %+-+ +++%-,,,,,,,,,,,....."
+ "................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,----% %@++              # %  -----++-,,,,,,,,,,,,....."
+ ".................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-- ++ ---+ + +%@     %++++++------%-,,,,,,,,,,,......"
+ "...................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---- -------++       +------------,,,,,,,,,,,,......"
+ "....................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----------+%       +--------,,,,,,,,,,,,,,,......."
+ "......................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,--------+#        -----,,,,,,,,,,,,,,,,,,......."
+ ".......................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-------+       #----,,,,,,,,,,,,,,,,,,........"
+ ".........................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,----+%      %#---,,,,,,,,,,,,,,,,,,,........"
+ "..........................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---+%+%@  %+%%--,,,,,,,,,,,,,,,,,,........."
+ "............................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---+-+%  %----,,,,,,,,,,,,,,,,,,.........."
+ ".............................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----+%@+---,,,,,,,,,,,,,,,,,,,.........."
+ "...............................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----+%----,,,,,,,,,,,,,,,,,,..........."
+ "................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-----%+ +--,,,,,,,,,,,,,,,,,............"
+ "..................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,---++----,,,,,,,,,,,,,,,,,............."
+ "...................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,---@-----,,,,,,,,,,,,,,,,,............."
+ ".....................................,,,,,,,,,,,,,,,,,,,,,,,,,,,-----,,,,,,,,,,,,,,,,,,,.............."
+ " .....................................,,,,,,,,,,,,,,,,,,,,,,,,,,--%,,,,,,,,,,,,,,,,,,,,..............."
+ " .......................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,................."
+ "  ........................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.................."
+ "   ........................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,..................."
+ "    .........................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,...................."
+ "     ..........................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,......................"
+ "      ............................................,,,,,,,,,,,,,,,,,,,,,,,,,,,,........................"
+ "       .............................................,,,,,,,,,,,,,,,,,,,,,,,,.........................."
+ "        ................................................,,,,,,,,,,,,,,,,,............................."
+ "         .....................................................,,,,...................................."
+ "          ........................................................................................... "
+ "           .........................................................................................  "
+ "            ......................................................................................    "
+ "             ....................................................................................     "
+ "               .................................................................................      "
+ "                ..............................................................................        "
+ "                  ...........................................................................         "
+ "                   ........................................................................           ")
+
+```
+:::
+
+
+
+## To recreate this notebook
+
+The contents of this [namespace](https://github.com/perrygeo/postgres-extras-clj/blob/main/examples/pgbench_tutorial.clj)
+are periodically rendered and checked into main. Why not as part of the test suite?
+running a database to make a meaningful tutorial, with commentary about the results, is not trivial to automate.
+
+
+
+::: {.sourceClojure}
+```clojure
+(comment
+  (require '[scicloj.clay.v2.api :as clay])
+  (clay/browse!)
+  (clay/make! {:source-path "examples/pgbench_tutorial.clj"
+               :format [:quarto :html]
+               :base-target-path "examples/rendered"}))
+```
+:::
+
+
+
+```{=html}
+<div style="background-color:grey;height:2px;width:100%;"></div>
+```
+
+
+
+```{=html}
+<div><pre><small><small>source: examples/pgbench_tutorial.clj</small></small></pre></div>
+```

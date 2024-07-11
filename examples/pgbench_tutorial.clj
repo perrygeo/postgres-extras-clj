@@ -79,10 +79,7 @@
 ^:kindly/hide-code
 (kind/md
  "```bash
- PGPASSWORD=password pgbench \\
-  --host localhost --port 5432 --username postgres \\
-  -s 10 -f 100 -i -i dtgvpf \\
-  main
+ PGPASSWORD=password pgbench --host localhost --port 5432 --username postgres -s 10 -F 100 -i -I dtgvpf main
  ```")
 
 ; Then run the benchmarks
@@ -90,10 +87,7 @@
 ^:kindly/hide-code
 (kind/md
  "```bash
- PGPASSWORD=password pgbench \\
-  --host localhost --port 5432 --username postgres \\
-  --client 32 --transactions 1000 --jobs 8 \\
-  main
+ PGPASSWORD=password pgbench --host localhost --port 5432 --username postgres --client 32 --transactions 1000 --jobs 8 main
  ```")
 
 ;; ### Driver Setup 
@@ -115,8 +109,10 @@
 
 ;; Do a health check to ensure connectivity
 
+
 ^:kindly/hide-code
-(pgex/health-check db2)
+(comment
+  (pgex/health-check db2))
 
 (pgex/health-check db)
 
@@ -158,10 +154,6 @@
 ^:kindly/hide-code (meta-as-header #'pgex/schemas)
 (show-public (pgex/schemas db))
 ; example row
-(comment
-  (count (pgex/schemas db))
-  (count (show (pgex/schemas db)))
-  (count (show-public (pgex/schemas db))))
 ^:kindly/hide-code (first (:schemas dd))
 
 ^:kindly/hide-code (meta-as-header #'pgex/views)
@@ -362,10 +354,14 @@
   (:art m))
 
 ; ## To recreate this notebook
-;
+
+;; The contents of this [namespace](https://github.com/perrygeo/postgres-extras-clj/blob/main/examples/pgbench_tutorial.clj)
+;; are periodically rendered and checked into main. Why not as part of the test suite?
+;; running a database to make a meaningful tutorial, with commentary about the results, is not trivial to automate.
+;;
 (comment
   (require '[scicloj.clay.v2.api :as clay])
   (clay/browse!)
   (clay/make! {:source-path "examples/pgbench_tutorial.clj"
                :format [:quarto :html]
-               :base-target-path "target/clay"}))
+               :base-target-path "examples/rendered"}))
