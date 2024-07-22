@@ -4,10 +4,10 @@ This change log follows the conventions of [keepachangelog.com](http://keepachan
 
 This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
-**Unreleased**
+## [0.1.21] - 2024-07-21
 
-- FIX: For the index-cache-hit and table-cache-hit tables, COALESCE null values to zero for unused.
-- CHANGES: Added pgbench example
+- FIX: For the index-cache-hit and table-cache-hit tables, COALESCE null values to zero for unused tables.
+- CHANGES: Added pgbench example notebook.
 
 ## [0.1.17] - 2024-07-08
 
