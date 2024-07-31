@@ -172,9 +172,9 @@
                                                        ;; excluding rarely used tables
                        :onfalse "Table sees too much block IO relative to buffer cache hit"
                        :idfn #(str (:schema %) "." (:name %))}
-   :unused-indexes    {:pred #(or (< (:size_bytes %) 10000000) (> (:scans %) 20))
-                       :onfalse "Large but unused index"
-                       :idfn #(str (:schemaname %) "." (:object_name %))}})
+   :unused-indexes    {:pred #(or (< (:index_size %) 10000000) (> (:index_scans %) 20))
+                       :onfalse "Large but unused index."
+                       :idfn :index}})
 
 (defn diagnose
   "Run assertions on stats and return a seq of result maps.
