@@ -8,6 +8,10 @@ This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
 - Use a fixture to manage postgres database in tests.
 
+## [0.1.23] - 2024-07-30
+
+- FIX: correct keys for unused-indexes diagnostic
+
 ## [0.1.21] - 2024-07-21
 
 - FIX: For the index-cache-hit and table-cache-hit tables, COALESCE null values to zero for unused tables.
