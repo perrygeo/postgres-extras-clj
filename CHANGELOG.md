@@ -4,6 +4,10 @@ This change log follows the conventions of [keepachangelog.com](http://keepachan
 
 This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
+## Unreleased
+
+- Use a fixture to manage postgres database in tests.
+
 ## [0.1.23] - 2024-07-30
 
 - FIX: correct keys for unused-indexes diagnostic

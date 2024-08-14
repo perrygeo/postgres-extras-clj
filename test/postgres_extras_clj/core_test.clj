@@ -2,7 +2,7 @@
   "Test the core postgres-extras-clj functions"
   (:require
    [clojure.string :as str]
-   [clojure.test :refer [deftest is testing]]
+   [clojure.test :refer [deftest is testing use-fixtures]]
    [hugsql.adapter.next-jdbc :as next-adapter]
    [hugsql.core :as hugsql]
    [next.jdbc :as jdbc]
@@ -10,35 +10,49 @@
   (:import
    (io.zonky.test.db.postgres.embedded EmbeddedPostgres)))
 
-;;;
 ;;; Globals
-;;;
+
 (set! *warn-on-reflection* true)
+
 (hugsql/set-adapter! (next-adapter/hugsql-adapter-next-jdbc))
 
-;;;
+#_{:clj-kondo/ignore [:uninitialized-var]}
+(def ^:dynamic db)
+
 ;;; Use an embedded (but real!) postgres instance.
-;;;
-(defonce embedded-pg (EmbeddedPostgres/start))
 
-(def db
-  (jdbc/get-datasource
-   {:jdbcUrl
-    (str  ;; TODO there's got to be a better way
-     (.getJdbcUrl ^EmbeddedPostgres embedded-pg "postgres" "postgres")
-     "&password=password")}))
+(defn embedded-pg
+  "Fixture to start a postgres database in a temp dir.
+  Establishes the pg_stat_statements extension and reloads."
+  [f]
+  ;; TODO 
+  ;; First initialize, then install the pg_stat_statements extension,
+  ;; then must restart postmaster in in the same datadir.
+  ;; PROBLEM tried using (.setCleanDataDirectory false) in later restart
+  ;; still wipes out datadir due to (I believe) a bug in Zonky
+  ;#_(let [initial-pg (.start (-> (EmbeddedPostgres/builder)
+  ;                                (.setDataDirectory datadir)))]
+  ;     (with-open [con (jdbc/get-connection (make-ds initial-pg))]
+  ;       (jdbc/execute-one! con ["CREATE EXTENSION if not exists pg_stat_statements;"]))
+  ;     (.close initial-pg))
+  ;; Then restart the database in the same datadir to run the tests w/ binding...
+  (let [datadir (str "/tmp/testdb-" (System/currentTimeMillis))
+        test-pg (.start (-> (EmbeddedPostgres/builder)
+                            (.setDataDirectory datadir)))]
+    (binding [db (jdbc/get-datasource
+                  {:jdbcUrl
+                   (str
+                    (.getJdbcUrl ^EmbeddedPostgres test-pg "postgres" "postgres")
+                    "&password=password")})]
+      (f)
+      (.close test-pg))))
 
-; TODO Doesn't work, we'd need to restart thus lose changes (I think?)
-; (err) ERROR: pg_stat_statements must be loaded via shared_preload_libraries
-; (with-open [con (jdbc/get-connection db)]
-;   (try
-;     (jdbc/execute-one!
-;      con ["CREATE EXTENSION if not exists pg_stat_statements;"])
-;     (catch Throwable _)))
+;; Register the postgres fixture to be called once, wrapping ALL tests in the namespace
 
-;;;
-;;; Utils
-;;;
+(use-fixtures :once embedded-pg)
+
+;; Utils
+
 (def test-fns
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.985)
@@ -82,6 +96,11 @@
    "diagnostic-fns with an IO-laden table fails the :ratio predicate"
     (is (some? (pgex/diagnose (mock-stats-blockio)
                               :diagnostic-fns test-fns)))))
+
+; TODO requires pg_stat_statements extension, see above
+#_(deftest pg_stat_statements_related
+    (testing "functions that require pg_stat_statements"
+      (is (not (nil? (pgex/calls db {:limit 10}))))))
 
 (deftest postgres-extras
 
@@ -197,3 +216,14 @@
       :port 5432
       :user "postgres"
       :password "password"})))
+
+(comment
+  (require '[clojure.reflect :refer [reflect]])
+  (.getMethods (.getClass embedded-pg))
+  (bean embedded-pg)
+  (:members (reflect embedded-pg))
+  (.close embedded-pg)
+  (reflect (.getPostgresDatabase embedded-pg))
+  (.startPostmaster embedded-pg)
+  (with-open [con (jdbc/get-connection db)]
+    (jdbc/execute-one! con ["select * from  pg_stat_statements;"])))
