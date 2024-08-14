@@ -4,6 +4,10 @@ This change log follows the conventions of [keepachangelog.com](http://keepachan
 
 This project uses MAJOR.MINOR.COMMIT-COUNT versioning
 
+## Unreleased
+
+- Use a fixture to manage postgres database in tests.
+
 ## [0.1.21] - 2024-07-21
 
 - FIX: For the index-cache-hit and table-cache-hit tables, COALESCE null values to zero for unused tables.
