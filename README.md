@@ -49,7 +49,7 @@ The data dictionary functionality is based on [pgdd](https://github.com/rustproo
 These include COMMENTS and are helpful for understanding the structure
 of your database, from a data modeling lens.
 
-| <span style="width:320px">Function</span>  | Scenario |
+| <span>Function</span>  | Scenario |
 |---------|---------|
 | `columns` | List all database column objects |
 | `databases` | List all databases |
@@ -64,12 +64,13 @@ of your database, from a data modeling lens.
 To get a full map of data objects, use `(read-data-dictionary db)` which
 returns a map, with keywords mirroring the above functions.
 
+
 ### 🛠️ Operational Diagnostics
 
 Diagnostic stats based on [ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras/tree/main).
 These are valuable for looking at your database through an operations or DBA lens.
 
-| <span style="width:320px">Function</span> | Scenario |
+| <span>Function</span> | Scenario |
 |---------|---------|
 | `all-locks` | Queries with active locks |
 | `bloat` | Table and index "bloat" in your database ordered by most wasteful |
@@ -106,6 +107,7 @@ Use the `(diagnose (read-stats db))` and `(diagnose-warnings (read-stats db))` f
 to evaluate the stats according to a set of heuristics. 
 
 
+
 ## Usage
 
 Check out the [examples](./examples/pgbench_tutorial.clj) if you're looking to create a fresh namespace. 
@@ -138,6 +140,7 @@ Do a quick health check
 ;  :version "PostgreSQL 16.1 (Debian 16.1-1.pgdg110+1) on x86_64-pc-linux-gnu..."}
 ```
 
+
 Generate a data dictionary summarizing all major objects in your database.
 
 ```clojure
@@ -168,6 +171,7 @@ Generate a data dictionary summarizing all major objects in your database.
 ;  :size_bytes 16384,
 ;  :bytes_per_row 16384}
 ```
+
 
 Create a full map of diagnostic stats. 
 
@@ -206,6 +210,7 @@ Create a full map of diagnostic stats.
 ;  :client_address "172.22.0.1/32"
 ;  :application_name "psql"}
 ```
+
 
 All of the stats and data dictionary keywords mirror the name of a public function in the
 `postgres-extras-clj.core` namespace so you can invoke them selectively,
@@ -263,27 +268,20 @@ To create your own diagnostics:
 ; ... many more
 ```
 
+
 ## Development
 
-Test runner with coverage
+```
+$ bb tasks
+The following tasks are available:
 
-    clj -X:test
+test   Run tests with coverage
+dev-db Start a develpment Postgres database
+nrepl  Start nREPL server for development
+build  Build JAR file
+deploy Deploy JAR after running tests
+```
 
-Run NREPL and interactive terminal REPL in one
-
-    clj -M:dev
-
-
-Build a jar. Output in `./target/com.github.perrygeo/postgres-extras-clj-*.jar`
-
-    clj -T:build jar
-
-
-Deploy to Clojars.
-Set `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` env vars.
-Assumes that `clj -T:build jar` has already been run.
-
-    clj -T:build deploy
 
 ## License
 
