@@ -1,0 +1,18 @@
+{:paths ["src"]
+ :tasks
+ {test {:doc "Run tests"
+        :task (shell "clojure -X:test")}
+
+  dev-db {:doc "Start a develpment Postgres database"
+          :task (shell {:dir "dev/infra"} "docker compose up")}
+
+  nrepl {:doc "Start nREPL server for development"
+         :task (shell "clj -M:dev")}
+
+  build {:doc "Build JAR file"
+         :task (shell "clj -T:build jar")}
+
+  deploy {:doc "Deploy JAR after running tests"
+          ; TODO Set `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` env vars.
+          :depends [test build]
+          :task (shell "clj -T:build deploy")}}}
