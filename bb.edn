@@ -1,18 +1,25 @@
-{:paths ["src"]
- :tasks
- {test {:doc "Run tests"
-        :task (shell "clojure -X:test")}
+{:tasks
+ {dev
+  {:doc  "Start the nREPL for local development"
+   :task (clojure "-M:dev")}
 
-  dev-db {:doc "Start a develpment Postgres database"
-          :task (shell {:dir "dev/infra"} "docker compose up")}
+  test
+  {:doc  "Run the test suite against all currently supported PostgreSQL versions"
+   :task (clojure "-X:test")}
+  ;;
+  ;; --- Docs & release ------------------------------------------------------
+  ;; TODO
+  ; docs
+  ; {:doc  "Generate codox API docs and copy demo assets."
+  ;  ;; Note that this will grab whatever main.js exists at the time, :advanced or dev profile.
+  ;  ;; To ensure :advanced, run bb compile first
+  ;  :task (shell ["bash" "-c"
+  ;                "clojure -X:codox && mkdir -p docs/js docs/css docs/data && cp public/js/main.js docs/js/main.js && cp public/css/* docs/css/ && cp -r public/data/* docs/data/ && cp public/index.html docs/03-examples.html"])}
+  release
+  {:doc     "Clean, compile, generate docs, and build the release JAR"
+   :depends []
+   :task    (clojure "-T:build" "jar")}
 
-  nrepl {:doc "Start nREPL server for development"
-         :task (shell "clj -M:dev")}
-
-  build {:doc "Build JAR file"
-         :task (shell "clj -T:build jar")}
-
-  deploy {:doc "Deploy JAR after running tests"
-          ; TODO Set `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` env vars.
-          :depends [test build]
-          :task (shell "clj -T:build deploy")}}}
+  publish
+  {:doc  "Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS_PASSWORD)"
+   :task (clojure "-T:build" "deploy")}}}
