@@ -56,7 +56,7 @@ SELECT
     pg_locks.transactionid,
     pg_locks.granted,
     pg_locks.mode,
-    pg_stat_activity.query AS query_snippet,
+    pg_stat_activity.query AS query,
     age(now(), pg_stat_activity.query_start) AS "age"
 FROM
     pg_stat_activity,
@@ -165,7 +165,7 @@ index_bloat AS (
 )
 SELECT
     type,
-    schemaname,
+    schemaname AS schema,
     object_name,
     bloat,
     waste
@@ -236,13 +236,13 @@ WHERE
 -- :result :many
 -- :doc Index and table hit rate
 SELECT
-    'index hit rate' AS name,
+    'index hit rate' AS metric,
     (sum(idx_blks_hit)) / nullif (sum(idx_blks_hit + idx_blks_read), 0) AS ratio
 FROM
     pg_statio_user_indexes
 UNION ALL
 SELECT
-    'table hit rate' AS name,
+    'table hit rate' AS metric,
     sum(heap_blks_hit) / nullif (sum(heap_blks_hit) + sum(heap_blks_read), 0) AS ratio
 FROM
     pg_statio_user_tables;
@@ -294,8 +294,8 @@ WHERE
 -- :doc Values of selected PostgreSQL settings
 /* HUG_PSQL_EXTRAS: Values of selected PostgreSQL settings */
 SELECT
-    name,
-    setting,
+    name AS setting,
+    setting AS value,
     unit,
     short_desc
 FROM
@@ -333,10 +333,10 @@ ORDER BY
 -- :doc Available and installed extensions
 /* HUG_PSQL_EXTRAS: Available and installed extensions */
 SELECT
-    name,
+    name AS extension,
     default_version,
     installed_version,
-    comment
+    comment AS description
 FROM
     pg_available_extensions
 ORDER BY
@@ -349,7 +349,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Calculates your cache hit rate for reading indexes */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS index,
     COALESCE(idx_blks_hit, 0) AS buffer_hits,
     COALESCE(idx_blks_read, 0) AS block_reads,
     COALESCE(idx_blks_hit + idx_blks_read, 0) AS total_read,
@@ -371,7 +371,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: The size of indexes, descending by size */
 SELECT
     n.nspname AS schema,
-    c.relname AS name,
+    c.relname AS index,
     sum(c.relpages::bigint * 8192)::bigint AS size
 FROM
     pg_class c
@@ -393,14 +393,14 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Index hit rate (effective databases are at 99% and up) */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS table,
     CASE idx_scan
     WHEN 0 THEN
         NULL
     ELSE
         (100 * idx_scan / (seq_scan + idx_scan))
     END percent_of_times_index_used,
-    n_live_tup rows_in_table
+    n_live_tup AS rows
 FROM
     pg_stat_user_tables
 ORDER BY
@@ -431,7 +431,7 @@ SELECT
     pg_locks.transactionid,
     pg_locks.granted,
     pg_locks.mode,
-    pg_stat_activity.query AS query_snippet,
+    pg_stat_activity.query AS query,
     age(now(), pg_stat_activity.query_start) AS "age"
 FROM
     pg_stat_activity,
@@ -544,7 +544,7 @@ SELECT
     c.relname AS index,
     pg_size_pretty(pg_relation_size(c.oid)) AS index_size,
     i.indisunique AS unique,
-    a.attname AS indexed_column,
+    a.attname AS column,
     CASE s.null_frac
     WHEN 0 THEN
         ''
@@ -609,8 +609,8 @@ LIMIT :v:limit;
 /* HUG_PSQL_EXTRAS: All tables and the number of rows in each ordered by number of rows descending */
 SELECT
     schemaname AS schema,
-    relname AS name,
-    n_live_tup AS estimated_count
+    relname AS table,
+    n_live_tup AS rows
 FROM
     pg_stat_user_tables
 ORDER BY
@@ -623,7 +623,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Count of sequential scans by table descending by order */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS table,
     seq_scan AS count
 FROM
     pg_stat_user_tables
@@ -637,7 +637,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Calculates your cache hit rate for reading tables */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS table,
     COALESCE(heap_blks_hit, 0) AS buffer_hits,
     COALESCE(heap_blks_read, 0) AS block_reads,
     COALESCE(heap_blks_hit + heap_blks_read, 0) AS total_read,
@@ -678,7 +678,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Size of the tables (excluding indexes), descending by size */
 SELECT
     n.nspname AS schema,
-    c.relname AS name,
+    c.relname AS table,
     pg_table_size(c.oid) AS size
 FROM
     pg_class c
@@ -712,7 +712,7 @@ WHERE
 /* HUG_PSQL_EXTRAS: Size of the tables (including indexes), descending by size */
 SELECT
     n.nspname AS schema,
-    c.relname AS name,
+    c.relname AS table,
     pg_total_relation_size(c.oid) AS size
 FROM
     pg_class c
@@ -788,8 +788,8 @@ SELECT
     vacuum_settings.relname AS table,
     to_char(psut.last_vacuum, 'YYYY-MM-DD HH24:MI') AS last_vacuum,
     to_char(psut.last_autovacuum, 'YYYY-MM-DD HH24:MI') AS last_autovacuum,
-    pg_class.reltuples AS rowcount,
-    psut.n_dead_tup AS dead_rowcount,
+    pg_class.reltuples AS rows,
+    psut.n_dead_tup AS dead_rows,
     autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor::numeric * pg_class.reltuples) AS autovacuum_threshold,
     CASE WHEN autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor::numeric * pg_class.reltuples) < psut.n_dead_tup THEN
         'yes'

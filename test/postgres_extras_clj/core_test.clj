@@ -57,20 +57,20 @@
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.985)
     :onfalse "Table sees high block IO relative to buffer cache hit"
-    :idfn :name}})
+    :idfn :table}})
 
 (defn mock-stats-buffered []
   {:table-cache-hit
    [{:block_reads 1
      :schema "public"
-     :name "table-with-buffered-cache"
+     :table "table-with-buffered-cache"
      :ratio 0.99}]})
 
 (defn mock-stats-blockio []
   {:table-cache-hit
    [{:block_reads 100
      :schema "public"
-     :name "table-with-much-block-io"
+     :table "table-with-much-block-io"
      :ratio 0.45}]})
 
 (deftest smoketest
@@ -157,8 +157,8 @@
     (let [schemas-with-comments (filter
                                  #(:description %)
                                  (map
-                                  #(let [d (:description %) n (:s_name %)]
-                                     {:description d :name n})
+                                  #(let [d (:description %) n (:schema %)]
+                                     {:description d :schema n})
                                   (pgex/schemas db)))]
       (is (>= (count schemas-with-comments) 3))))
 

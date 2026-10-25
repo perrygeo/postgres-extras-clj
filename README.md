@@ -159,15 +159,15 @@ Generate a data dictionary summarizing all major objects in your database.
 (rand-nth (:tables dd))
 ; {:size_pretty "16 kB",
 ;  :description nil,
-;  :owned_by "postgres",
+;  :owner "postgres",
 ;  :size_plus_indexes "48 kB",
 ;  :rows 1,
 ;  :oid 19789,
 ;  :data_type "table",
 ;  :size_plus_indexes_bytes 49152,
-;  :s_name "public",
+;  :schema "public",
 ;  :system_object false,
-;  :t_name "users",
+;  :table "users",
 ;  :size_bytes 16384,
 ;  :bytes_per_row 16384}
 ```
@@ -221,15 +221,15 @@ instead of getting them from the full map.
 (rand-nth (pgex/tables db))
 ; {:size_pretty "16 kB",
 ;  :description nil,
-;  :owned_by "postgres",
+;  :owner "postgres",
 ;  :size_plus_indexes "48 kB",
 ;  :rows 1,
 ;  :oid 19789,
 ;  :data_type "table",
 ;  :size_plus_indexes_bytes 49152,
-;  :s_name "public",
+;  :schema "public",
 ;  :system_object false,
-;  :t_name "users",
+;  :table "users",
 ;  :size_bytes 16384,
 ;  :bytes_per_row 16384}
 
@@ -256,7 +256,7 @@ To create your own diagnostics:
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.999)
     :onfalse "The cache hit ratio is not as insanely high as I'd like."
-    :idfn :name}})
+    :idfn :table}})
 
 (doseq [w (pgex/diagnose-warnings
            (pgex/read-stats db)
@@ -264,7 +264,7 @@ To create your own diagnostics:
   (println (:message w)))
 
 ; ! Warning :table-cache-hit, message_topics, The cache hit ratio is not as insanely high as I'd like.
-; {:ratio 0.9806201550387597, :schema "public", :name "message_topics", :buffer_hits 253, :block_reads 5, :total_read 258}
+; {:ratio 0.9806201550387597, :schema "public", :table "message_topics", :buffer_hits 253, :block_reads 5, :total_read 258}
 ; ... many more
 ```
 

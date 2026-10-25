@@ -32,7 +32,7 @@
 -- :doc List all database column objects
 -- Handles generated column details for Pg12+
 SELECT
-    n.nspname::text AS s_name,
+    n.nspname::text AS schema,
     CASE c.relkind
     WHEN 'r'::"char" THEN
         'table'::text
@@ -49,8 +49,8 @@ SELECT
     ELSE
         NULL::text
     END AS source_type,
-    c.relname::text AS t_name,
-    a.attname::text AS c_name,
+    c.relname::text AS table,
+    a.attname::text AS column,
     t.typname::text AS data_type,
     a.attnum AS "position",
     col_description(c.oid, a.attnum::integer) AS description,
@@ -97,7 +97,7 @@ WHERE
 WITH db_stats AS (
     SELECT
         d.oid,
-        d.datname AS db_name,
+        d.datname AS database,
         pg_size_pretty(pg_database_size(d.datname)) AS db_size
     FROM
         pg_catalog.pg_database d
@@ -147,7 +147,7 @@ extension_stats AS (
 )
 SELECT
     d.oid,
-    d.db_name::text,
+    d.database::text,
     d.db_size,
     t.table_count,
     t.size_in_tables,
@@ -170,11 +170,11 @@ FROM
 -- :doc List all function objects in current database
 --
 SELECT
-    n.nspname::text AS s_name,
-    p.proname::text AS f_name,
+    n.nspname::text AS schema,
+    p.proname::text AS function,
     pg_get_function_result(p.oid)::text AS result_data_types,
     pg_get_function_arguments(p.oid)::text AS argument_data_types,
-    pg_get_userbyid(p.proowner)::text AS owned_by,
+    pg_get_userbyid(p.proowner)::text AS owner,
     CASE WHEN p.prosecdef THEN
         'definer'::text
     ELSE
@@ -202,9 +202,9 @@ FROM
 --
 SELECT
     c.oid,
-    n.nspname::text AS s_name,
-    t.relname::text AS t_name,
-    c.relname::text AS i_name,
+    n.nspname::text AS schema,
+    t.relname::text AS table,
+    c.relname::text AS index,
     i.indnkeyatts AS key_columns,
     i.indnatts AS total_columns,
     i.indisprimary AS primary_key,
@@ -241,7 +241,7 @@ FROM
 WITH s AS (
     SELECT
         n.oid,
-        n.nspname AS s_name,
+        n.nspname AS schema,
         pg_get_userbyid(n.nspowner) AS owner,
         -- ms.data_source,
         -- ms.sensitive,
@@ -259,7 +259,7 @@ WITH s AS (
 ),
 f AS (
     SELECT
-        n.nspname AS s_name,
+        n.nspname AS schema,
         count(DISTINCT p.oid) AS function_count
     FROM
         pg_proc p
@@ -269,7 +269,7 @@ f AS (
 ),
 v AS (
     SELECT
-        n.nspname AS s_name,
+        n.nspname AS schema,
         count(DISTINCT c_1.oid) AS view_count
     FROM
         pg_class c_1
@@ -281,7 +281,7 @@ v AS (
         n.nspname
 )
 SELECT
-    s.s_name::text,
+    s.schema::text,
     s.owner::text,
     s.description::text,
     s.system_object,
@@ -296,10 +296,10 @@ FROM
     s
     LEFT JOIN pg_class c ON s.oid = c.relnamespace
         AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]))
-    LEFT JOIN f ON f.s_name = s.s_name
-    LEFT JOIN v ON v.s_name = s.s_name
+    LEFT JOIN f ON f.schema = s.schema
+    LEFT JOIN v ON v.schema = s.schema
 GROUP BY
-    s.s_name,
+    s.schema,
     s.owner,
     s.description,
     s.system_object,
@@ -314,8 +314,8 @@ GROUP BY
 --
 -- dd."tables" source
 SELECT
-    n.nspname::text AS s_name,
-    c.relname::text AS t_name,
+    n.nspname::text AS schema,
+    c.relname::text AS table,
     CASE WHEN c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]) THEN
         'table'::text
     WHEN c.relkind = 's'::"char" THEN
@@ -325,7 +325,7 @@ SELECT
     ELSE
         NULL::text
     END AS data_type,
-    pg_get_userbyid(c.relowner)::text AS owned_by,
+    pg_get_userbyid(c.relowner)::text AS owner,
     pg_size_pretty(pg_table_size(c.oid::regclass))::text AS size_pretty,
     pg_table_size(c.oid::regclass)::bigint AS size_bytes,
     c.reltuples::bigint AS rows,
@@ -357,8 +357,8 @@ WHERE
 -- :doc List all view objects in current database
 --
 SELECT
-    n.nspname::text AS s_name,
-    c.relname::text AS v_name,
+    n.nspname::text AS schema,
+    c.relname::text AS view,
     CASE c.relkind
     WHEN 'v'::"char" THEN
         'view'::text
@@ -367,7 +367,7 @@ SELECT
     ELSE
         NULL::text
     END AS view_type,
-    pg_get_userbyid(c.relowner)::text AS owned_by,
+    pg_get_userbyid(c.relowner)::text AS owner,
     c.reltuples::bigint AS rows,
     pg_size_pretty(pg_table_size(c.oid::regclass))::text AS size_pretty,
     pg_table_size(c.oid::regclass)::bigint AS size_bytes,
@@ -393,8 +393,8 @@ WHERE (c.relkind = ANY (ARRAY['v'::"char", 'm'::"char"]));
 --
 SELECT
     c.oid,
-    ns.nspname::text AS s_name,
-    c.relname::text AS t_name,
+    ns.nspname::text AS schema,
+    c.relname::text AS table,
     i.inhparent AS parent_oid,
     i.inhparent::regclass::text AS parent_name,
     c.relispartition::boolean AS declarative_partition,
@@ -420,8 +420,8 @@ WHERE
 WITH partition_parent AS (
     SELECT
         c.oid,
-        n.nspname::text AS s_name,
-        c.relname::text AS t_name,
+        n.nspname::text AS schema,
+        c.relname::text AS table,
         CASE WHEN pt.partrelid IS NOT NULL THEN
             'declarative'
         WHEN c.relkind = 'r' THEN

@@ -170,7 +170,7 @@
 ; example row
 (first (:functions dd))
 
-#_(filter #(= (:t_name %) "pgbench_accounts") (pgex/tables db))
+#_(filter #(= (:table %) "pgbench_accounts") (pgex/tables db))
 
 ;; 
 ;; ## Full map of diagnostic statistics
@@ -322,7 +322,7 @@
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.999)
     :onfalse "The cache hit ratio is not as insanely high as I'd like."
-    :idfn :name}})
+    :idfn :table}})
 
 (for [w (pgex/diagnose-warnings
          (pgex/read-stats db)

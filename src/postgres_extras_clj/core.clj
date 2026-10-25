@@ -157,11 +157,11 @@
                        :idfn #(identity %)}
    :bloat             {:pred #(< (:bloat %) 10)
                        :onfalse "Bloated tables"
-                       :idfn #(str (:schemaname %) "." (:object_name %))}
+                       :idfn #(str (:schema %) "." (:object_name %))}
    :index-cache-hit   {:pred #(or (> (:ratio %) 0.985) (< (:block_reads %) 10))
                                                        ;; excluding rarely used tables
                        :onfalse "Index sees too much block IO relative to buffer cache hit"
-                       :idfn #(str (:schema %) "." (:name %))}
+                       :idfn #(str (:schema %) "." (:index %))}
    :null-indexes      {:pred  #(or (< (:null_frac_percent %) 50) (< (:size_mb %) 1))
                        :onfalse "Index has too many nulls"          ;; excluding small tables
                        :idfn :index}
@@ -171,7 +171,7 @@
    :table-cache-hit   {:pred #(or (> (:ratio %) 0.985) (< (:block_reads %) 10))
                                                        ;; excluding rarely used tables
                        :onfalse "Table sees too much block IO relative to buffer cache hit"
-                       :idfn #(str (:schema %) "." (:name %))}
+                       :idfn #(str (:schema %) "." (:table %))}
    :unused-indexes    {:pred #(or (< (:index_size %) 10000000) (> (:index_scans %) 20))
                        :onfalse "Large but unused index."
                        :idfn :index}})
