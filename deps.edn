@@ -49,7 +49,19 @@
         :main-opts ["-m" "nrepl.cmdline"
                     "--middleware" "[cider.nrepl/cider-middleware]"
                     "--interactive"]}
-
+  ;;
+  ;; $ clj -M:notebook --render --base-target-path target/clay \
+  ;;       --config-map '{:format [:quarto :html]}' examples/pgbench_tutorial.clj
+  ;;   Render the pgbench example notebook with Clay (headless, no nREPL).
+  ;;   The notebook queries a live PostgreSQL at localhost:5432 (see bb db:up).
+  ;;
+  :notebook {:extra-paths ["examples"]
+             :extra-deps {com.fzakaria/slf4j-timbre {:mvn/version "0.4.1"}
+                          org.scicloj/clay {:mvn/version "2.0.24"}
+                          com.layerware/hugsql-adapter-next-jdbc {:mvn/version "0.5.3"}
+                          seancorfield/next.jdbc {:mvn/version "1.2.659"}}
+             :main-opts ["-m" "scicloj.clay.v2.main"]}
+  ;;
   ;; $ clj -T:build jar     # Build target/com.github.perrygeo/postgres-extras-clj-{version}.jar
   ;; $ clj -T:build deploy  # Deploy to Clojars
   :build {:deps {io.github.clojure/tools.build {:git/tag "v0.10.3" :git/sha "15ead66"}
