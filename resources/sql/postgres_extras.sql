@@ -237,13 +237,13 @@ WHERE
 -- :doc Index and table hit rate
 SELECT
     'index hit rate' AS metric,
-    (sum(idx_blks_hit)) / nullif (sum(idx_blks_hit + idx_blks_read), 0) AS ratio
+    ((sum(idx_blks_hit)) / nullif (sum(idx_blks_hit + idx_blks_read), 0))::float AS ratio
 FROM
     pg_statio_user_indexes
 UNION ALL
 SELECT
     'table hit rate' AS metric,
-    sum(heap_blks_hit) / nullif (sum(heap_blks_hit) + sum(heap_blks_read), 0) AS ratio
+    (sum(heap_blks_hit) / nullif (sum(heap_blks_hit) + sum(heap_blks_read), 0))::float AS ratio
 FROM
     pg_statio_user_tables;
 
@@ -309,7 +309,7 @@ WHERE
 -- :doc Multiple indexes that have the same set of columns, same opclass, expression and predicate
 /* HUG_PSQL_EXTRAS: Multiple indexes that have the same set of columns, same opclass, expression and predicate */
 SELECT
-    pg_size_pretty(sum(pg_relation_size(idx))::bigint) AS size,
+    sum(pg_relation_size(idx))::bigint AS size,
     (array_agg(idx))[1]::text AS idx1,
     (array_agg(idx))[2]::text AS idx2,
     (array_agg(idx))[3]::text AS idx3,
@@ -398,8 +398,8 @@ SELECT
     WHEN 0 THEN
         NULL
     ELSE
-        (100 * idx_scan / (seq_scan + idx_scan))
-    END percent_of_times_index_used,
+        (idx_scan::float / (seq_scan + idx_scan))
+    END index_usage_ratio,
     n_live_tup AS rows
 FROM
     pg_stat_user_tables
@@ -542,16 +542,11 @@ ORDER BY
 SELECT
     c.oid,
     c.relname AS index,
-    pg_size_pretty(pg_relation_size(c.oid)) AS index_size,
+    pg_relation_size(c.oid) AS index_size,
     i.indisunique AS unique,
     a.attname AS column,
-    CASE s.null_frac
-    WHEN 0 THEN
-        ''
-    ELSE
-        to_char(s.null_frac * 100, '999.00%')
-    END AS null_frac,
-    pg_size_pretty((pg_relation_size(c.oid) * s.null_frac)::bigint) AS expected_saving
+    s.null_frac AS null_frac,
+    (pg_relation_size(c.oid) * s.null_frac)::bigint AS expected_saving
 FROM
     pg_class c
     JOIN pg_index i ON i.indexrelid = c.oid

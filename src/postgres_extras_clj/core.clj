@@ -162,7 +162,7 @@
                                                        ;; excluding rarely used tables
                        :onfalse "Index sees too much block IO relative to buffer cache hit"
                        :idfn #(str (:schema %) "." (:index %))}
-   :null-indexes      {:pred  #(or (< (:null_frac_percent %) 50) (< (:size_mb %) 1))
+   :null-indexes      {:pred  #(or (< (:null_frac %) 0.5) (< (:index_size %) 1048576))
                        :onfalse "Index has too many nulls"          ;; excluding small tables
                        :idfn :index}
    :outliers          {:pred #(< (:prop_exec_time %) 0.50)

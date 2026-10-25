@@ -98,7 +98,8 @@ WITH db_stats AS (
     SELECT
         d.oid,
         d.datname AS database,
-        pg_size_pretty(pg_database_size(d.datname)) AS db_size
+        pg_database_size(d.datname) AS db_size_bytes,
+        pg_size_pretty(pg_database_size(d.datname)) AS db_size_pretty
     FROM
         pg_catalog.pg_database d
     WHERE
@@ -127,7 +128,8 @@ dd_tablestats AS (
 table_stats AS (
     SELECT
         COUNT(t.oid) AS table_count,
-        pg_size_pretty(SUM(t.size_plus_indexes_bytes)) AS size_in_tables
+        SUM(t.size_plus_indexes_bytes) AS size_in_tables_bytes,
+        pg_size_pretty(SUM(t.size_plus_indexes_bytes)) AS size_in_tables_pretty
     FROM
         dd_tablestats AS t
 ),
@@ -148,9 +150,11 @@ extension_stats AS (
 SELECT
     d.oid,
     d.database::text,
-    d.db_size,
+    d.db_size_bytes,
+    d.db_size_pretty,
     t.table_count,
-    t.size_in_tables,
+    t.size_in_tables_bytes,
+    t.size_in_tables_pretty,
     -- TODO
     -- s.schema_count,
     -- v.view_count,
@@ -216,7 +220,7 @@ SELECT
         TRUE
     END AS partial_index,
     c.reltuples AS rows_indexed,
-    pg_size_pretty(pg_total_relation_size(c.oid::regclass)) AS index_size,
+    pg_size_pretty(pg_total_relation_size(c.oid::regclass)) AS index_size_pretty,
     pg_total_relation_size(c.oid::regclass) AS index_size_bytes,
     CASE WHEN n.nspname !~ '^pg_toast'::text
         AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
@@ -289,7 +293,7 @@ SELECT
     COALESCE(v.view_count, 0::bigint)::bigint AS view_count,
     COALESCE(f.function_count, 0::bigint)::bigint AS function_count,
     pg_size_pretty(sum(pg_table_size(c.oid::regclass)))::text AS size_pretty,
-    pg_size_pretty(sum(pg_total_relation_size(c.oid::regclass)))::text AS size_plus_indexes,
+    pg_size_pretty(sum(pg_total_relation_size(c.oid::regclass)))::text AS size_plus_indexes_pretty,
     sum(pg_table_size(c.oid::regclass))::bigint AS size_bytes,
     sum(pg_total_relation_size(c.oid::regclass))::bigint AS size_plus_indexes_bytes
 FROM
@@ -335,7 +339,7 @@ SELECT
         NULL::bigint
     END AS bytes_per_row,
     pg_total_relation_size(c.oid::regclass)::bigint AS size_plus_indexes_bytes,
-    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes,
+    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes_pretty,
     obj_description(c.oid, 'pg_class'::name)::text AS description,
     CASE WHEN n.nspname !~ '^pg_toast'::text
         AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
@@ -371,7 +375,7 @@ SELECT
     c.reltuples::bigint AS rows,
     pg_size_pretty(pg_table_size(c.oid::regclass))::text AS size_pretty,
     pg_table_size(c.oid::regclass)::bigint AS size_bytes,
-    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes,
+    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes_pretty,
     pg_total_relation_size(c.oid::regclass)::bigint AS size_plus_indexes_bytes,
     obj_description(c.oid, 'pg_class'::name)::text AS description,
     CASE WHEN n.nspname !~ '^pg_toast'::text
