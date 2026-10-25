@@ -7,6 +7,10 @@
   test
   {:doc  "Run the test suite against all currently supported PostgreSQL versions"
    :task (clojure "-X:test")}
+
+  lint
+  {:doc  "Run clj-kondo linting over the project sources"
+   :task (shell "clj-kondo" "--lint" "src" "test" "bb" "examples" "build.clj")}
   ;;
   ;; --- Notebook / docs pipeline ---------------------------------------------
   ;; Regenerate the pgbench example notebook and publish it to the ghpages
