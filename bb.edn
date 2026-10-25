@@ -1,4 +1,5 @@
-{:tasks
+{:paths ["bb"]
+ :tasks
  {dev
   {:doc  "Start the nREPL for local development"
    :task (clojure "-M:dev")}
@@ -7,14 +8,53 @@
   {:doc  "Run the test suite against all currently supported PostgreSQL versions"
    :task (clojure "-X:test")}
   ;;
-  ;; --- Docs & release ------------------------------------------------------
-  ;; TODO
-  ; docs
-  ; {:doc  "Generate codox API docs and copy demo assets."
-  ;  ;; Note that this will grab whatever main.js exists at the time, :advanced or dev profile.
-  ;  ;; To ensure :advanced, run bb compile first
-  ;  :task (shell ["bash" "-c"
-  ;                "clojure -X:codox && mkdir -p docs/js docs/css docs/data && cp public/js/main.js docs/js/main.js && cp public/css/* docs/css/ && cp -r public/data/* docs/data/ && cp public/index.html docs/03-examples.html"])}
+  ;; --- Notebook / docs pipeline ---------------------------------------------
+  ;; Regenerate the pgbench example notebook and publish it to the ghpages
+  ;; branch (which GitHub Actions deploys to GitHub Pages).
+  ;;
+  ;;   $ bb notebook          # full pipeline
+  ;;
+  ;; Individual steps (composable):
+  ;;   $ bb db:up              # ensure PostgreSQL container is up and ready
+  ;;   $ bb db:pgbench         # ensure pgbench schema + a benchmark run exist
+  ;;   $ bb db:benchmark       # force a fresh benchmark run
+  ;;   $ bb notebook:render    # render notebook with Clay -> target/clay
+  ;;   $ bb notebook:copy      # copy rendered artifacts -> doc/
+  ;;   $ bb notebook:publish   # commit doc/ to ghpages and push
+  ;;
+  db:up
+  {:doc  "Ensure the pgbench PostgreSQL container is up, ready, and has required extensions enabled"
+   :task notebook/db-up!}
+
+  db:pgbench
+  {:doc     "Ensure the pgbench schema and at least one benchmark run are present (idempotent)"
+   :depends [db:up]
+   :task    notebook/db-pgbench!}
+
+  db:benchmark
+  {:doc     "Force a fresh pgbench benchmark run to refresh stats"
+   :depends [db:up]
+   :task    (notebook/db-pgbench! {:force? true})}
+
+  notebook:render
+  {:doc     "Render examples/pgbench_tutorial.clj to target/clay with Clay + Quarto"
+   :depends [db:pgbench]
+   :task    notebook/render!}
+
+  notebook:copy
+  {:doc     "Copy the rendered notebook artifacts from target/clay into doc/"
+   :depends [notebook:render]
+   :task    notebook/copy!}
+
+  notebook:publish
+  {:doc     "Commit doc/ to the ghpages branch and push to origin"
+   :depends [notebook:copy]
+   :task    notebook/publish!}
+
+  notebook
+  {:doc     "Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages"
+   :depends [notebook:publish]}
+
   release
   {:doc     "Clean, compile, generate docs, and build the release JAR"
    :depends []
