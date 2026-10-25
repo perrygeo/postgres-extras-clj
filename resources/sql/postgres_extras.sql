@@ -143,7 +143,7 @@ table_bloat AS (
         JOIN pg_class cc ON cc.relname = bloat_info.tablename
         JOIN pg_namespace nn ON cc.relnamespace = nn.oid
             AND nn.nspname = bloat_info.schemaname
-            AND nn.nspname <> 'information_schema'
+            AND nn.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
 ),
 index_bloat AS (
     SELECT
@@ -159,7 +159,7 @@ index_bloat AS (
     JOIN pg_class cc ON cc.relname = bloat_info.tablename
     JOIN pg_namespace nn ON cc.relnamespace = nn.oid
         AND nn.nspname = bloat_info.schemaname
-        AND nn.nspname <> 'information_schema'
+        AND nn.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     JOIN pg_index i ON indrelid = cc.oid
     JOIN pg_class c2 ON c2.oid = i.indexrelid
 )
@@ -388,6 +388,8 @@ SELECT
     END ratio
 FROM
     pg_statio_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     idx_blks_hit / (idx_blks_hit + idx_blks_read + 1)::float DESC;
 
@@ -404,8 +406,7 @@ FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind = 'i'
 GROUP BY
     (n.nspname,
@@ -430,6 +431,8 @@ SELECT
     n_live_tup AS rows
 FROM
     pg_stat_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     n_live_tup DESC;
 
@@ -662,6 +665,8 @@ SELECT
     n_live_tup AS rows
 FROM
     pg_stat_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     n_live_tup DESC;
 
@@ -676,6 +681,8 @@ SELECT
     seq_scan AS count
 FROM
     pg_stat_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     seq_scan DESC;
 
@@ -698,6 +705,8 @@ SELECT
     END ratio
 FROM
     pg_statio_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     heap_blks_hit / (heap_blks_hit + heap_blks_read + 1)::float DESC;
 
@@ -714,8 +723,7 @@ FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind IN ('r', 'm')
 ORDER BY
     pg_indexes_size(c.oid) DESC;
@@ -733,8 +741,7 @@ FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind IN ('r', 'm')
 ORDER BY
     pg_table_size(c.oid) DESC;
@@ -750,8 +757,7 @@ FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind = 'i';
 
 -- :name total-table-size
@@ -767,8 +773,7 @@ FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind IN ('r', 'm')
 ORDER BY
     pg_total_relation_size(c.oid) DESC;
@@ -795,6 +800,7 @@ WHERE
     NOT indisunique
     AND idx_scan < :v:min_scans
     AND pg_relation_size(relid) > 5 * 8192
+    AND schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     pg_relation_size(i.indexrelid) / nullif (idx_scan, 0) DESC NULLS FIRST,
     pg_relation_size(i.indexrelid) DESC;
@@ -847,6 +853,8 @@ FROM
     pg_stat_user_tables psut
     INNER JOIN pg_class ON psut.relid = pg_class.oid
     INNER JOIN vacuum_settings ON pg_class.oid = vacuum_settings.oid
+WHERE
+    psut.schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     1;
 

@@ -161,6 +161,15 @@
     ;   the contents may not be meaningful.
     (is (= 9 (count (keys (pgex/read-data-dictionary db))))))
 
+  (testing
+   "system objects are filtered by default and included with the flag"
+    (let [dd-default (pgex/read-data-dictionary db)
+          dd-all     (pgex/read-data-dictionary db {:include-system-objects? true})]
+      (is (every? (complement :system_object) (:schemas dd-default)))
+      (is (some :system_object (:schemas dd-all)))
+      (is (every? (complement :system_object) (:tables dd-default)))
+      (is (every? (complement :system_object) (:columns dd-default)))))
+
   ; The following calls are covered by the read-data-dictionary fn
   ; | (columns db) | List all database column objects |
   ; | (databases db) | List all databases |
@@ -199,6 +208,27 @@
   (testing "sync io time is non-negative"
     (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/outliers db {:limit 10})))
     (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/calls db {:limit 10})))))
+
+(deftest timescaledb-system-schemas
+  (testing "TimescaleDB internal schemas are flagged as system objects and filtered by default"
+    ;; Ensure a clean slate in case a previous run left these behind.
+    (jdbc/execute! db ["DROP SCHEMA IF EXISTS _timescaledb_internal CASCADE"])
+    (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_information CASCADE"])
+    (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_experimental CASCADE"])
+    (try
+      (jdbc/execute! db ["CREATE SCHEMA _timescaledb_internal"])
+      (jdbc/execute! db ["CREATE SCHEMA timescaledb_information"])
+      (jdbc/execute! db ["CREATE SCHEMA timescaledb_experimental"])
+      (let [ts-schemas (filter #(re-find #"timescaledb" (:schema %))
+                               (pgex/schemas db))]
+        (is (= 3 (count ts-schemas)))
+        (is (every? :system_object ts-schemas))
+        (is (not-any? #(re-find #"timescaledb" (:schema %))
+                      (:schemas (pgex/read-data-dictionary db)))))
+      (finally
+        (jdbc/execute! db ["DROP SCHEMA IF EXISTS _timescaledb_internal CASCADE"])
+        (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_information CASCADE"])
+        (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_experimental CASCADE"])))))
 
 (comment
   ;; for testing another database,

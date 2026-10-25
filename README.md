@@ -32,11 +32,11 @@ Understanding your database isn't optional.
 `postgres-extras-clj` provides this missing toolkit for Clojure developers.
 
 The SQL logic lives in [`resources/sql/*.sql`](resources/sql/) and is
-formatted with pgFormat for consistency. SQL is 
+formatted with pgFormat for consistency. SQL is
 annotated with [HugSQL](https://www.hugsql.org) comments to turn them
 into clojure fns via macro magic. Instead of a web interface or postgres extension,
-`postgres-extras-clj.core` provides a clojure namespace with a few dozen useful 
-functions that query system tables and **return diagnostics as plain data structures**. 
+`postgres-extras-clj.core` provides a clojure namespace with a few dozen useful
+functions that query system tables and **return diagnostics as plain data structures**.
 The goal is to run with limited, SELECT-only privileges
 of system schemas and tables (with a few noted exceptions).
 
@@ -44,7 +44,7 @@ All you need is a JDBC connection and a REPL.
 
 
 ### 📚 Data Dictionary
- 
+
 The data dictionary functionality is based on [pgdd](https://github.com/rustprooflabs/pgdd).
 These include COMMENTS and are helpful for understanding the structure
 of your database, from a data modeling lens.
@@ -64,6 +64,8 @@ of your database, from a data modeling lens.
 To get a full map of data objects, use `(read-data-dictionary db)` which
 returns a map, with keywords mirroring the above functions.
 
+System objects are excluded by default.
+Pass `(read-data-dictionary db {:include-system-objects? true})` to include them.
 
 ### 🛠️ Operational Diagnostics
 
@@ -74,7 +76,7 @@ These are valuable for looking at your database through an operations or DBA len
 |---------|---------|
 | `all-locks` | Queries with active locks |
 | `bloat` | Table and index "bloat" in your database ordered by most wasteful |
-| `blocking` | Queries holding locks other queries are waiting to be released | 
+| `blocking` | Queries holding locks other queries are waiting to be released |
 | `cache-hit` | Index and table hit rate |
 | `calls` | Queries that have the highest frequency of execution |
 | `connections` | Returns the list of all active database connections |
@@ -103,16 +105,20 @@ These are valuable for looking at your database through an operations or DBA len
 To get a full map of diagnostic stats, use `(read-stats db)` which
 returns a map, with keywords mirroring the above functions.
 
+Diagnostic queries exclude postgres schemas
+`pg_catalog`, `information_schema`, `pg_toast*`,
+and TimescaleDB's internal schemas.
+
 Use the `(diagnose (read-stats db))` and `(diagnose-warnings (read-stats db))` functions
-to evaluate the stats according to a set of heuristics. 
+to evaluate the stats according to a set of heuristics.
 
 
 
 ## Usage
 
-Check out the [examples](./examples/pgbench_tutorial.clj) if you're looking to create a fresh namespace. 
+Check out the [examples](./examples/pgbench_tutorial.clj) if you're looking to create a fresh namespace.
 
-The following is a REPL demonstration of `postgres-extras-clj` with the `next.jdbc` adapter. 
+The following is a REPL demonstration of `postgres-extras-clj` with the `next.jdbc` adapter.
 Run `clj -M:dev` then evaluate the following forms
 
 
@@ -152,7 +158,7 @@ Generate a data dictionary summarizing all major objects in your database.
 ;  :indexes
 ;  :schemas
 ;  :tables
-;  :views 
+;  :views
 ;  :partition-children
 ;  :partition-parents)
 
@@ -172,8 +178,7 @@ Generate a data dictionary summarizing all major objects in your database.
 ;  :bytes_per_row 16384}
 ```
 
-
-Create a full map of diagnostic stats. 
+Create a full map of diagnostic stats.
 
 ```clojure
 (def stats (pgex/read-stats db))
@@ -299,7 +304,7 @@ Assumes that `clj -T:build jar` has already been run.
 
 ## License
 
-Copyright © 2024 Matthew T. Perry (`perrygeo`). 
+Copyright © 2024 Matthew T. Perry (`perrygeo`).
 Distributed under the MIT license.
 
 The credit for the SQL query logic goes

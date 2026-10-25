@@ -24,6 +24,9 @@
 --
 -- Changes
 -- * remove references to the internal `dd` tables.
+-- * centralize system-object detection and treat TimescaleDB's
+--   `_timescaledb_*`, `timescaledb_information`, and
+--   `timescaledb_experimental` schemas as system objects.
 --------------------------------------------------
 --
 -- :name columns
@@ -56,11 +59,11 @@ SELECT
     col_description(c.oid, a.attnum::integer) AS description,
     -- mc.data_source,
     -- mc.sensitive,
-    CASE WHEN (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name]))
-        AND n.nspname !~ '^pg_toast'::text THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object,
     (
         SELECT
@@ -175,23 +178,15 @@ FROM
 --
 SELECT
     n.nspname::text AS schema,
-    p.proname::text AS function,
-    pg_get_function_result(p.oid)::text AS result_data_types,
-    pg_get_function_arguments(p.oid)::text AS argument_data_types,
-    pg_get_userbyid(p.proowner)::text AS owner,
-    CASE WHEN p.prosecdef THEN
+    p.proname::text AS function, pg_get_function_result(p.oid)::text AS result_data_types, pg_get_function_arguments(p.oid)::text AS argument_data_types, pg_get_userbyid(p.proowner)::text AS owner, CASE WHEN p.prosecdef THEN
         'definer'::text
     ELSE
         'invoker'::text
-    END AS proc_security,
-    array_to_string(p.proacl, ''::text) AS access_privileges,
-    l.lanname::text AS proc_language,
-    p.prosrc::text AS source_code,
-    obj_description(p.oid, 'pg_proc'::name)::text AS description,
-    CASE WHEN n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name]) THEN
-        FALSE
-    ELSE
+    END AS proc_security, array_to_string(p.proacl, ''::text) AS access_privileges, l.lanname::text AS proc_language, p.prosrc::text AS source_code, obj_description(p.oid, 'pg_proc'::name)::text AS description, CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object
 FROM
     pg_proc p
@@ -222,11 +217,11 @@ SELECT
     c.reltuples AS rows_indexed,
     pg_size_pretty(pg_total_relation_size(c.oid::regclass)) AS index_size_pretty,
     pg_total_relation_size(c.oid::regclass) AS index_size_bytes,
-    CASE WHEN n.nspname !~ '^pg_toast'::text
-        AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object
 FROM
     pg_catalog.pg_index i
@@ -250,12 +245,11 @@ WITH s AS (
         -- ms.data_source,
         -- ms.sensitive,
         obj_description(n.oid, 'pg_namespace'::name) AS description,
-        CASE WHEN n.nspname !~ '^pg_'::text
-            AND (n.nspname <> ALL (ARRAY['pg_catalog'::name,
-                    'information_schema'::name])) THEN
-            FALSE
-        ELSE
+        CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+            OR n.nspname = 'information_schema'::name THEN
             TRUE
+        ELSE
+            FALSE
         END AS system_object
     FROM
         pg_namespace n
@@ -341,11 +335,11 @@ SELECT
     pg_total_relation_size(c.oid::regclass)::bigint AS size_plus_indexes_bytes,
     pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes_pretty,
     obj_description(c.oid, 'pg_class'::name)::text AS description,
-    CASE WHEN n.nspname !~ '^pg_toast'::text
-        AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object,
     c.oid
 FROM
@@ -378,11 +372,11 @@ SELECT
     pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes_pretty,
     pg_total_relation_size(c.oid::regclass)::bigint AS size_plus_indexes_bytes,
     obj_description(c.oid, 'pg_class'::name)::text AS description,
-    CASE WHEN n.nspname !~ '^pg_toast'::text
-        AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object,
     c.oid
 FROM
@@ -452,4 +446,3 @@ SELECT
     *
 FROM
     partition_parent;
-

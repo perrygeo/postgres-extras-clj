@@ -161,18 +161,26 @@
 
 (defn read-data-dictionary
   "Create a data dictionary summarizing all major objects
-  in your PostgreSQL database. Respects SQL COMMMENTS,
-  thus serves as a human-readable description of your data model."
-  [db]
-  {:databases (databases db)
-   :columns   (columns db)
-   :functions (functions db)
-   :indexes   (indexes db)
-   :schemas   (schemas db)
-   :tables    (tables db)
-   :views     (views db)
-   :partition-children (partition-children db)
-   :partition-parents (partition-parents db)})
+  in your PostgreSQL database. Respects SQL COMMENTS,
+  thus serves as a human-readable description of your data model.
+
+  By default, system objects (schemas in pg_catalog,
+  information_schema, pg_*, and TimescaleDB's _timescaledb_*,
+  timescaledb_information, and timescaledb_experimental schemas)
+  are excluded. Pass :include-system-objects? true to include them."
+  [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
+  (let [dd {:databases (databases db)
+            :columns   (columns db)
+            :functions (functions db)
+            :indexes   (indexes db)
+            :schemas   (schemas db)
+            :tables    (tables db)
+            :views     (views db)
+            :partition-children (partition-children db)
+            :partition-parents (partition-parents db)}]
+    (if include-system-objects?
+      dd
+      (into {} (map (fn [[k v]] [k (when v (remove :system_object v))]) dd)))))
 
 ;;;
 ;;; Diagnostics
