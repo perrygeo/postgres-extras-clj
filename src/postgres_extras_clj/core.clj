@@ -50,7 +50,8 @@
          bloat
          blocking
          cache-hit
-         calls
+         calls-legacy
+         calls-pg17
          connections
          db-settings
          duplicate-indexes
@@ -64,9 +65,11 @@
          long-running-queries
          mandelbrot
          null-indexes
-         outliers
+         outliers-legacy
+         outliers-pg17
          records-rank
          seq-scans
+         server-version-num
          table-cache-hit
          table-indexes-size
          table-size
@@ -78,6 +81,33 @@
 (hugsql/def-db-fns "sql/postgres_extras.sql")
 
 (hugsql/def-db-fns "sql/data_dictionary.sql")
+
+(defn- pg-version-num
+  "Numeric PostgreSQL server version, e.g. 170005 for 17.5."
+  [db]
+  (:version_num (server-version-num db)))
+
+(defn calls
+  "Queries that have the highest frequency of execution.
+
+  Dispatches to a version-appropriate query because PostgreSQL 17 renamed
+  pg_stat_statements.blk_read_time/blk_write_time into shared/local/temp
+  read/write time columns."
+  [db {:keys [limit] :or {limit 10}}]
+  (if (>= (pg-version-num db) 170000)
+    (calls-pg17 db {:limit limit})
+    (calls-legacy db {:limit limit})))
+
+(defn outliers
+  "Queries that have longest execution time in aggregate.
+
+  Dispatches to a version-appropriate query because PostgreSQL 17 renamed
+  pg_stat_statements.blk_read_time/blk_write_time into shared/local/temp
+  read/write time columns."
+  [db {:keys [limit] :or {limit 10}}]
+  (if (>= (pg-version-num db) 170000)
+    (outliers-pg17 db {:limit limit})
+    (outliers-legacy db {:limit limit})))
 
 ;;;
 ;;; Stats

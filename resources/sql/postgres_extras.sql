@@ -247,10 +247,10 @@ SELECT
 FROM
     pg_statio_user_tables;
 
--- :name calls
+-- :name calls-legacy
 -- :command :query
 -- :result :many
--- :doc Queries that have the highest frequency of execution
+-- :doc Queries that have the highest frequency of execution (PostgreSQL < 17)
 /* HUG_PSQL_EXTRAS: Queries that have the highest frequency of execution */
 SELECT
     query AS query,
@@ -258,6 +258,33 @@ SELECT
     (total_exec_time / sum(total_exec_time) OVER ()) AS exec_time_ratio,
     calls,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * (blk_read_time + blk_write_time))) AS sync_io_time_ms
+FROM
+    pg_stat_statements
+WHERE
+    userid = (
+        SELECT
+            usesysid
+        FROM
+            pg_user
+        WHERE
+            usename = CURRENT_USER
+        LIMIT 1)
+    AND query NOT LIKE '/* HUG_PSQL_EXTRAS:%'
+ORDER BY
+    calls DESC
+LIMIT :v:limit;
+
+-- :name calls-pg17
+-- :command :query
+-- :result :many
+-- :doc Queries that have the highest frequency of execution (PostgreSQL >= 17)
+/* HUG_PSQL_EXTRAS: Queries that have the highest frequency of execution */
+SELECT
+    query AS query,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
+    (total_exec_time / sum(total_exec_time) OVER ()) AS exec_time_ratio,
+    calls,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * (shared_blk_read_time + shared_blk_write_time + local_blk_read_time + local_blk_write_time + temp_blk_read_time + temp_blk_write_time))) AS sync_io_time_ms
 FROM
     pg_stat_statements
 WHERE
@@ -570,10 +597,10 @@ WHERE
 ORDER BY
     pg_relation_size(c.oid) * s.null_frac DESC;
 
--- :name outliers
+-- :name outliers-legacy
 -- :command :query
 -- :result :many
--- :doc Queries that have longest execution time in aggregate.
+-- :doc Queries that have longest execution time in aggregate (PostgreSQL < 17)
 /* HUG_PSQL_EXTRAS: Queries that have longest execution time in aggregate */
 SELECT
     query AS query,
@@ -581,6 +608,33 @@ SELECT
     (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
     calls,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * (blk_read_time + blk_write_time))) AS sync_io_time_ms
+FROM
+    pg_stat_statements
+WHERE
+    userid = (
+        SELECT
+            usesysid
+        FROM
+            pg_user
+        WHERE
+            usename = CURRENT_USER
+        LIMIT 1)
+    AND query NOT LIKE '/* HUG_PSQL_EXTRAS:%'
+ORDER BY
+    total_exec_time DESC
+LIMIT :v:limit;
+
+-- :name outliers-pg17
+-- :command :query
+-- :result :many
+-- :doc Queries that have longest execution time in aggregate (PostgreSQL >= 17)
+/* HUG_PSQL_EXTRAS: Queries that have longest execution time in aggregate */
+SELECT
+    query AS query,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
+    (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
+    calls,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * (shared_blk_read_time + shared_blk_write_time + local_blk_read_time + local_blk_write_time + temp_blk_read_time + temp_blk_write_time))) AS sync_io_time_ms
 FROM
     pg_stat_statements
 WHERE
@@ -804,4 +858,11 @@ ORDER BY
 SELECT
     now() AS now,
     version() AS version;
+
+-- :name server-version-num
+-- :command :query
+-- :result :one
+-- :doc Numeric PostgreSQL server version (e.g. 170005 for 17.5)
+SELECT
+    current_setting('server_version_num')::int AS version_num;
 

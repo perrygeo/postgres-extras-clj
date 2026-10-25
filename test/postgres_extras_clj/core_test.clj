@@ -22,28 +22,20 @@
 ;;; Use an embedded (but real!) postgres instance.
 
 (defn embedded-pg
-  "Fixture to start a postgres database in a temp dir.
-  Establishes the pg_stat_statements extension and reloads."
+  "Fixture to start a PostgreSQL database in a temp dir with
+  pg_stat_statements preloaded via shared_preload_libraries, then
+  create the extension before running tests."
   [f]
-  ;; TODO
-  ;; First initialize, then install the pg_stat_statements extension,
-  ;; then must restart postmaster in in the same datadir.
-  ;; PROBLEM tried using (.setCleanDataDirectory false) in later restart
-  ;; still wipes out datadir due to (I believe) a bug in Zonky
-  ;#_(let [initial-pg (.start (-> (EmbeddedPostgres/builder)
-  ;                                (.setDataDirectory datadir)))]
-  ;     (with-open [con (jdbc/get-connection (make-ds initial-pg))]
-  ;       (jdbc/execute-one! con ["CREATE EXTENSION if not exists pg_stat_statements;"]))
-  ;     (.close initial-pg))
-  ;; Then restart the database in the same datadir to run the tests w/ binding...
   (let [datadir (str "/tmp/testdb-" (System/currentTimeMillis))
         test-pg (.start (-> (EmbeddedPostgres/builder)
-                            (.setDataDirectory datadir)))]
-    (binding [db (jdbc/get-datasource
-                  {:jdbcUrl
-                   (str
-                    (.getJdbcUrl ^EmbeddedPostgres test-pg "postgres" "postgres")
-                    "&password=password")})]
+                            (.setDataDirectory datadir)
+                            (.setServerConfig "shared_preload_libraries" "pg_stat_statements")))
+        ds      (jdbc/get-datasource
+                 {:jdbcUrl (str (.getJdbcUrl ^EmbeddedPostgres test-pg "postgres" "postgres")
+                                "&password=password")})]
+    (with-open [conn (jdbc/get-connection ds)]
+      (jdbc/execute-one! conn ["CREATE EXTENSION IF NOT EXISTS pg_stat_statements"]))
+    (binding [db ds]
       (f)
       (.close test-pg))))
 
@@ -181,29 +173,32 @@
   ; | (views db) | List all view objects in current database |
   )
 
-(comment
-  ; Some stats are skipped (nil) due to the lack of pg_stat_statements extension in test.
-  ; Depending on whether your test database has pg_stat_statements or not,
-  ; you'll want to run one of these:
+(deftest pg-stat-statements-based
+  (testing "outliers returns the expected columns"
+    (let [rows (pgex/outliers db {:limit 10})]
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:query row))
+                         (number? (:exec_time_ms row))
+                         (number? (:prop_exec_time row))
+                         (integer? (:calls row))
+                         (number? (:sync_io_time_ms row))))
+                  rows))))
 
-  ; no extension, outliers and call will always be nil.
-  ; (testing
-  ;  "read all stats, filter for nils."
-  ;   (is (= '([:outliers nil]
-  ;            [:calls nil])
-  ;          (filter (fn [[_ v]] (nil? v))
-  ;                  (pgex/read-stats db)))))
+  (testing "calls returns the expected columns"
+    (let [rows (pgex/calls db {:limit 10})]
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:query row))
+                         (number? (:exec_time_ms row))
+                         (number? (:exec_time_ratio row))
+                         (integer? (:calls row))
+                         (number? (:sync_io_time_ms row))))
+                  rows))))
 
-  ; yes extension, outliers and call will always return times in decimal ms.
-  (deftest pg-stat-statements-based
-    (testing "outliers return exec time in ms"
-      (is (> (-> (pgex/outliers db {:limit 10}) first :exec_time_ms) 0M)))
-    (testing "outliers return sync io time in ms"
-      (is (>= (-> (pgex/outliers db {:limit 10}) first :sync_io_time_ms) 0M)))
-    (testing "calls return exec time in ms"
-      (is (> (-> (pgex/calls db {:limit 10}) first :exec_time_ms) 0M)))
-    (testing "calls return sync io time in ms"
-      (is (>= (-> (pgex/calls db {:limit 10}) first :sync_io_time_ms) 0M)))))
+  (testing "sync io time is non-negative"
+    (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/outliers db {:limit 10})))
+    (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/calls db {:limit 10})))))
 
 (comment
   ;; for testing another database,
