@@ -271,17 +271,31 @@ To create your own diagnostics:
 
 ## Development
 
-```
-$ bb tasks
-The following tasks are available:
+Run the test suite on every supported PostgreSQL version
+(see `supported-postgres-versions` in `test/postgres_extras_clj/test_runner.clj`),
+then run code coverage once on the latest version:
 
-test   Run tests with coverage
-dev-db Start a develpment Postgres database
-nrepl  Start nREPL server for development
-build  Build JAR file
-deploy Deploy JAR after running tests
-```
+    clj -X:test
 
+Run the suite on a single version (useful while iterating):
+
+    clj -X:test :postgres-versions '["16.15.0"]'
+
+Run the NREPL and interactive terminal REPL in one:
+
+    clj -M:dev
+
+
+Build a jar. Output in `./target/com.github.perrygeo/postgres-extras-clj-*.jar`
+
+    clj -T:build jar
+
+
+Deploy to Clojars.
+Set `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` env vars.
+Assumes that `clj -T:build jar` has already been run.
+
+    clj -T:build deploy
 
 ## License
 

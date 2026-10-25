@@ -25,7 +25,7 @@
   "Fixture to start a postgres database in a temp dir.
   Establishes the pg_stat_statements extension and reloads."
   [f]
-  ;; TODO 
+  ;; TODO
   ;; First initialize, then install the pg_stat_statements extension,
   ;; then must restart postmaster in in the same datadir.
   ;; PROBLEM tried using (.setCleanDataDirectory false) in later restart
@@ -55,23 +55,23 @@
 
 (def test-fns
   {:table-cache-hit
-   {:pred #(> (:ratio %) 0.985)
+   {:pred    #(> (:ratio %) 0.985)
     :onfalse "Table sees high block IO relative to buffer cache hit"
-    :idfn :table}})
+    :idfn    :table}})
 
 (defn mock-stats-buffered []
   {:table-cache-hit
    [{:block_reads 1
-     :schema "public"
-     :table "table-with-buffered-cache"
-     :ratio 0.99}]})
+     :schema      "public"
+     :table       "table-with-buffered-cache"
+     :ratio       0.99}]})
 
 (defn mock-stats-blockio []
   {:table-cache-hit
    [{:block_reads 100
-     :schema "public"
-     :table "table-with-much-block-io"
-     :ratio 0.45}]})
+     :schema      "public"
+     :table       "table-with-much-block-io"
+     :ratio       0.45}]})
 
 (deftest smoketest
   (testing
@@ -121,7 +121,7 @@
 
   ;; The following calls are covered by the read-stats fn
   ; (pgex/all-locks db) | Queries with active locks |
-  ; (pgex/blocking db) | Queries holding locks other queries are waiting to be released | 
+  ; (pgex/blocking db) | Queries holding locks other queries are waiting to be released |
   ; (pgex/bloat db) | Table and index "bloat" in your database ordered by most wasteful |
   ; (pgex/cache-hit db) | Index and table hit rate |
   ; (pgex/calls db) | Queries that have the highest frequency of execution |
@@ -153,7 +153,7 @@
 
   (testing
    "A few of the default system tables have COMMENTs, aka descriptions"
-    ;; for most everything else, you'll need to add your own comments 
+    ;; for most everything else, you'll need to add your own comments
     (let [schemas-with-comments (filter
                                  #(:description %)
                                  (map
@@ -210,11 +210,11 @@
   ;; instead of the embedded zonky db
   (def db
     (jdbc/get-datasource
-     {:dbtype "postgresql"
-      :dbname "main"
-      :host "localhost"
-      :port 5432
-      :user "postgres"
+     {:dbtype   "postgresql"
+      :dbname   "main"
+      :host     "localhost"
+      :port     5432
+      :user     "postgres"
       :password "password"})))
 
 (comment
