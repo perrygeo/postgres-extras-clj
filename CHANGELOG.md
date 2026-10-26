@@ -1,10 +1,11 @@
 # Change Log
 All notable changes to this project will be documented in this file.
-This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
-This project uses MAJOR.MINOR.COMMIT-COUNT versioning
+This project's version numbers are MAJOR.MINOR.PR-NUMBER by convention.
+Pre 1.0 releases will have breaking changes.
 
-## Unreleased - 2026-10-25
+## [0.2.22] - 2026-10-25
+* New MAJOR.MINOR.PR-NUMBER versioning. start 0.2.x
 * Upgrade clojars dependencies
 * BREAKING: Make naming consistent (e.g. `s_name`, `schemaname`, `schema` are all now `schema`)
 * BREAKING: Make units consistent (bytes for sizes, proportions not percentages)
