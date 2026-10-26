@@ -49,7 +49,7 @@ jobs:
         run: bb test
 
       - name: Build release jar
-        run: bb release
+        run: bb jar
 
       - name: Push to clojars if tagged
         if: contains(github.ref, '/tags/v')

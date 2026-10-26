@@ -59,10 +59,17 @@
   {:doc     "Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages"
    :depends [notebook:publish]}
 
+  release:bump
+  {:doc  "Bump version files only (README.md, pom.xml, CHANGELOG.md) — no commit, tag, or push. bb release:bump 0.2.22"
+   :task release/bump!}
+
   release
-  {:doc     "Clean, compile, generate docs, and build the release JAR"
-   :depends []
-   :task    (clojure "-T:build" "jar")}
+  {:doc  "Cut a release: bump version files, commit, tag v<version>, and push (bb release 0.2.22 [--no-push])"
+   :task release/cut!}
+
+  jar
+  {:doc  "Build the JAR. Version = git tag at HEAD (untagged => 0.0.0-SNAPSHOT)"
+   :task (clojure "-T:build" "jar")}
 
   publish
   {:doc  "Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS_PASSWORD)"
