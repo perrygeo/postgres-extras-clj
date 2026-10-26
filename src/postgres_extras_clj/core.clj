@@ -226,12 +226,10 @@
                       ident (idfn %)]
                   {:diagnostic k
                    :pass       ret
-                   :message    (do
-                                 (println k ident)
-                                 (if ret
-                                   (str "✓  Passed " k " " (tidy-report ident))
-                                   (str "! Warning " k " " (tidy-report ident)
-                                        " " onfalse "\n" %)))
+                   :message    (if ret
+                                 (str "✓  Passed " k " " (tidy-report ident))
+                                 (str "! Warning " k " " (tidy-report ident)
+                                      " " onfalse "\n" %))
                    :data       (when (not ret) %)})
                (get stats k)))
         diagnostic-fns)))
