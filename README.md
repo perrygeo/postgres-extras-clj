@@ -276,31 +276,33 @@ To create your own diagnostics:
 
 ## Development
 
-Run the test suite on every supported PostgreSQL version
-(see `supported-postgres-versions` in `test/postgres_extras_clj/test_runner.clj`),
-then run code coverage once on the latest version:
+You'll need to install
 
-    clj -X:test
+* `docker compose` (or some other means of running postgres)
+* `babashka`
+* `clj-kondo`
 
-Run the suite on a single version (useful while iterating):
+You'll use `bb` for most day-to-day tasks
 
-    clj -X:test :postgres-versions '["16.15.0"]'
+```sh
+$ bb tasks
+The following tasks are available:
 
-Run the NREPL and interactive terminal REPL in one:
+dev               Start the nREPL for local development
+test              Run the test suite against all currently supported PostgreSQL versions
+lint              Run clj-kondo linting over the project sources
+db:up             Ensure the pgbench PostgreSQL container is up, ready, and has required extensions enabled
+db:pgbench        Ensure the pgbench schema and at least one benchmark run are present
+db:benchmark      Force a fresh pgbench benchmark run to refresh stats
+notebook:render   Render examples/pgbench_tutorial.clj to target/clay with Clay + Quarto
+notebook:copy     Copy the rendered notebook artifacts from target/clay into doc/
+notebook:publish  Commit doc/ to the ghpages branch and push to origin
+notebook          Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages
+release           Cut a release: bump version files, commit, tag v<version>, and push (bb release 0.2.22 [--no-push])
+jar               Build the JAR. Version = git tag at HEAD (untagged => 0.0.0-SNAPSHOT)
+publish           Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS_PASSWORD)
+```
 
-    clj -M:dev
-
-
-Build a jar. Output in `./target/com.github.perrygeo/postgres-extras-clj-*.jar`
-
-    clj -T:build jar
-
-
-Deploy to Clojars.
-Set `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` env vars.
-Assumes that `clj -T:build jar` has already been run.
-
-    clj -T:build deploy
 
 ## License
 
