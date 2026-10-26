@@ -1,6 +1,7 @@
 .calva/output-window/
 .classpath
 .clj-kondo/*
+!.clj-kondo/config.edn
 .cpcache
 .eastwood
 .factorypath
@@ -26,3 +27,6 @@
 /classes
 /target
 /dev/infra/pgdata
+/.ghpages
+/doc/*
+!/doc/cljdoc.edn

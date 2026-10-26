@@ -1,18 +1,76 @@
-{:paths ["src"]
+{:paths ["bb"]
  :tasks
- {test {:doc "Run tests"
-        :task (shell "clojure -X:test")}
+ {dev
+  {:doc  "Start the nREPL for local development"
+   :task (clojure "-M:dev")}
 
-  dev-db {:doc "Start a develpment Postgres database"
-          :task (shell {:dir "dev/infra"} "docker compose up")}
+  test
+  {:doc  "Run the test suite against all currently supported PostgreSQL versions"
+   :task (clojure "-X:test")}
 
-  nrepl {:doc "Start nREPL server for development"
-         :task (shell "clj -M:dev")}
+  lint
+  {:doc  "Run clj-kondo linting over the project sources"
+   :task (shell "clj-kondo" "--lint" "src" "test" "bb" "examples" "build.clj")}
+  ;;
+  ;; --- Notebook / docs pipeline ---------------------------------------------
+  ;; Regenerate the pgbench example notebook and publish it to the ghpages
+  ;; branch (which GitHub Actions deploys to GitHub Pages).
+  ;;
+  ;;   $ bb notebook          # full pipeline
+  ;;
+  ;; Individual steps (composable):
+  ;;   $ bb db:up              # ensure PostgreSQL container is up and ready
+  ;;   $ bb db:pgbench         # ensure pgbench schema + a benchmark run exist
+  ;;   $ bb db:benchmark       # force a fresh benchmark run
+  ;;   $ bb notebook:render    # render notebook with Clay -> target/clay
+  ;;   $ bb notebook:copy      # copy rendered artifacts -> doc/
+  ;;   $ bb notebook:publish   # commit doc/ to ghpages and push
+  ;;
+  db:up
+  {:doc  "Ensure the pgbench PostgreSQL container is up, ready, and has required extensions enabled"
+   :task notebook/db-up!}
 
-  build {:doc "Build JAR file"
-         :task (shell "clj -T:build jar")}
+  db:pgbench
+  {:doc     "Ensure the pgbench schema and at least one benchmark run are present (idempotent)"
+   :depends [db:up]
+   :task    notebook/db-pgbench!}
 
-  deploy {:doc "Deploy JAR after running tests"
-          ; TODO Set `CLOJARS_USERNAME` and `CLOJARS_PASSWORD` env vars.
-          :depends [test build]
-          :task (shell "clj -T:build deploy")}}}
+  db:benchmark
+  {:doc     "Force a fresh pgbench benchmark run to refresh stats"
+   :depends [db:up]
+   :task    (notebook/db-pgbench! {:force? true})}
+
+  notebook:render
+  {:doc     "Render examples/pgbench_tutorial.clj to target/clay with Clay + Quarto"
+   :depends [db:pgbench]
+   :task    notebook/render!}
+
+  notebook:copy
+  {:doc     "Copy the rendered notebook artifacts from target/clay into doc/"
+   :depends [notebook:render]
+   :task    notebook/copy!}
+
+  notebook:publish
+  {:doc     "Commit doc/ to the ghpages branch and push to origin"
+   :depends [notebook:copy]
+   :task    notebook/publish!}
+
+  notebook
+  {:doc     "Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages"
+   :depends [notebook:publish]}
+
+  release:bump
+  {:doc  "Bump version files only (README.md, pom.xml, CHANGELOG.md) — no commit, tag, or push. bb release:bump 0.2.22"
+   :task release/bump!}
+
+  release
+  {:doc  "Cut a release: bump version files, commit, tag v<version>, and push (bb release 0.2.22 [--no-push])"
+   :task release/cut!}
+
+  jar
+  {:doc  "Build the JAR. Version = git tag at HEAD (untagged => 0.0.0-SNAPSHOT)"
+   :task (clojure "-T:build" "jar")}
+
+  publish
+  {:doc  "Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS_PASSWORD)"
+   :task (clojure "-T:build" "deploy")}}}

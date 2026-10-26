@@ -24,6 +24,9 @@
 --
 -- Changes
 -- * remove references to the internal `dd` tables.
+-- * centralize system-object detection and treat TimescaleDB's
+--   `_timescaledb_*`, `timescaledb_information`, and
+--   `timescaledb_experimental` schemas as system objects.
 --------------------------------------------------
 --
 -- :name columns
@@ -32,7 +35,7 @@
 -- :doc List all database column objects
 -- Handles generated column details for Pg12+
 SELECT
-    n.nspname::text AS s_name,
+    n.nspname::text AS schema,
     CASE c.relkind
     WHEN 'r'::"char" THEN
         'table'::text
@@ -49,18 +52,18 @@ SELECT
     ELSE
         NULL::text
     END AS source_type,
-    c.relname::text AS t_name,
-    a.attname::text AS c_name,
+    c.relname::text AS table,
+    a.attname::text AS column,
     t.typname::text AS data_type,
     a.attnum AS "position",
     col_description(c.oid, a.attnum::integer) AS description,
     -- mc.data_source,
     -- mc.sensitive,
-    CASE WHEN (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name]))
-        AND n.nspname !~ '^pg_toast'::text THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object,
     (
         SELECT
@@ -97,8 +100,9 @@ WHERE
 WITH db_stats AS (
     SELECT
         d.oid,
-        d.datname AS db_name,
-        pg_size_pretty(pg_database_size(d.datname)) AS db_size
+        d.datname AS database,
+        pg_database_size(d.datname) AS db_size_bytes,
+        pg_size_pretty(pg_database_size(d.datname)) AS db_size_pretty
     FROM
         pg_catalog.pg_database d
     WHERE
@@ -127,7 +131,8 @@ dd_tablestats AS (
 table_stats AS (
     SELECT
         COUNT(t.oid) AS table_count,
-        pg_size_pretty(SUM(t.size_plus_indexes_bytes)) AS size_in_tables
+        SUM(t.size_plus_indexes_bytes) AS size_in_tables_bytes,
+        pg_size_pretty(SUM(t.size_plus_indexes_bytes)) AS size_in_tables_pretty
     FROM
         dd_tablestats AS t
 ),
@@ -147,10 +152,12 @@ extension_stats AS (
 )
 SELECT
     d.oid,
-    d.db_name::text,
-    d.db_size,
+    d.database::text,
+    d.db_size_bytes,
+    d.db_size_pretty,
     t.table_count,
-    t.size_in_tables,
+    t.size_in_tables_bytes,
+    t.size_in_tables_pretty,
     -- TODO
     -- s.schema_count,
     -- v.view_count,
@@ -170,24 +177,16 @@ FROM
 -- :doc List all function objects in current database
 --
 SELECT
-    n.nspname::text AS s_name,
-    p.proname::text AS f_name,
-    pg_get_function_result(p.oid)::text AS result_data_types,
-    pg_get_function_arguments(p.oid)::text AS argument_data_types,
-    pg_get_userbyid(p.proowner)::text AS owned_by,
-    CASE WHEN p.prosecdef THEN
+    n.nspname::text AS schema,
+    p.proname::text AS function, pg_get_function_result(p.oid)::text AS result_data_types, pg_get_function_arguments(p.oid)::text AS argument_data_types, pg_get_userbyid(p.proowner)::text AS owner, CASE WHEN p.prosecdef THEN
         'definer'::text
     ELSE
         'invoker'::text
-    END AS proc_security,
-    array_to_string(p.proacl, ''::text) AS access_privileges,
-    l.lanname::text AS proc_language,
-    p.prosrc::text AS source_code,
-    obj_description(p.oid, 'pg_proc'::name)::text AS description,
-    CASE WHEN n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name]) THEN
-        FALSE
-    ELSE
+    END AS proc_security, array_to_string(p.proacl, ''::text) AS access_privileges, l.lanname::text AS proc_language, p.prosrc::text AS source_code, obj_description(p.oid, 'pg_proc'::name)::text AS description, CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object
 FROM
     pg_proc p
@@ -202,9 +201,9 @@ FROM
 --
 SELECT
     c.oid,
-    n.nspname::text AS s_name,
-    t.relname::text AS t_name,
-    c.relname::text AS i_name,
+    n.nspname::text AS schema,
+    t.relname::text AS table,
+    c.relname::text AS index,
     i.indnkeyatts AS key_columns,
     i.indnatts AS total_columns,
     i.indisprimary AS primary_key,
@@ -216,13 +215,13 @@ SELECT
         TRUE
     END AS partial_index,
     c.reltuples AS rows_indexed,
-    pg_size_pretty(pg_total_relation_size(c.oid::regclass)) AS index_size,
+    pg_size_pretty(pg_total_relation_size(c.oid::regclass)) AS index_size_pretty,
     pg_total_relation_size(c.oid::regclass) AS index_size_bytes,
-    CASE WHEN n.nspname !~ '^pg_toast'::text
-        AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object
 FROM
     pg_catalog.pg_index i
@@ -241,17 +240,16 @@ FROM
 WITH s AS (
     SELECT
         n.oid,
-        n.nspname AS s_name,
+        n.nspname AS schema,
         pg_get_userbyid(n.nspowner) AS owner,
         -- ms.data_source,
         -- ms.sensitive,
         obj_description(n.oid, 'pg_namespace'::name) AS description,
-        CASE WHEN n.nspname !~ '^pg_'::text
-            AND (n.nspname <> ALL (ARRAY['pg_catalog'::name,
-                    'information_schema'::name])) THEN
-            FALSE
-        ELSE
+        CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+            OR n.nspname = 'information_schema'::name THEN
             TRUE
+        ELSE
+            FALSE
         END AS system_object
     FROM
         pg_namespace n
@@ -259,7 +257,7 @@ WITH s AS (
 ),
 f AS (
     SELECT
-        n.nspname AS s_name,
+        n.nspname AS schema,
         count(DISTINCT p.oid) AS function_count
     FROM
         pg_proc p
@@ -269,7 +267,7 @@ f AS (
 ),
 v AS (
     SELECT
-        n.nspname AS s_name,
+        n.nspname AS schema,
         count(DISTINCT c_1.oid) AS view_count
     FROM
         pg_class c_1
@@ -281,7 +279,7 @@ v AS (
         n.nspname
 )
 SELECT
-    s.s_name::text,
+    s.schema::text,
     s.owner::text,
     s.description::text,
     s.system_object,
@@ -289,17 +287,17 @@ SELECT
     COALESCE(v.view_count, 0::bigint)::bigint AS view_count,
     COALESCE(f.function_count, 0::bigint)::bigint AS function_count,
     pg_size_pretty(sum(pg_table_size(c.oid::regclass)))::text AS size_pretty,
-    pg_size_pretty(sum(pg_total_relation_size(c.oid::regclass)))::text AS size_plus_indexes,
+    pg_size_pretty(sum(pg_total_relation_size(c.oid::regclass)))::text AS size_plus_indexes_pretty,
     sum(pg_table_size(c.oid::regclass))::bigint AS size_bytes,
     sum(pg_total_relation_size(c.oid::regclass))::bigint AS size_plus_indexes_bytes
 FROM
     s
     LEFT JOIN pg_class c ON s.oid = c.relnamespace
         AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]))
-    LEFT JOIN f ON f.s_name = s.s_name
-    LEFT JOIN v ON v.s_name = s.s_name
+    LEFT JOIN f ON f.schema = s.schema
+    LEFT JOIN v ON v.schema = s.schema
 GROUP BY
-    s.s_name,
+    s.schema,
     s.owner,
     s.description,
     s.system_object,
@@ -314,8 +312,8 @@ GROUP BY
 --
 -- dd."tables" source
 SELECT
-    n.nspname::text AS s_name,
-    c.relname::text AS t_name,
+    n.nspname::text AS schema,
+    c.relname::text AS table,
     CASE WHEN c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]) THEN
         'table'::text
     WHEN c.relkind = 's'::"char" THEN
@@ -325,7 +323,7 @@ SELECT
     ELSE
         NULL::text
     END AS data_type,
-    pg_get_userbyid(c.relowner)::text AS owned_by,
+    pg_get_userbyid(c.relowner)::text AS owner,
     pg_size_pretty(pg_table_size(c.oid::regclass))::text AS size_pretty,
     pg_table_size(c.oid::regclass)::bigint AS size_bytes,
     c.reltuples::bigint AS rows,
@@ -335,13 +333,13 @@ SELECT
         NULL::bigint
     END AS bytes_per_row,
     pg_total_relation_size(c.oid::regclass)::bigint AS size_plus_indexes_bytes,
-    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes,
+    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes_pretty,
     obj_description(c.oid, 'pg_class'::name)::text AS description,
-    CASE WHEN n.nspname !~ '^pg_toast'::text
-        AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object,
     c.oid
 FROM
@@ -357,8 +355,8 @@ WHERE
 -- :doc List all view objects in current database
 --
 SELECT
-    n.nspname::text AS s_name,
-    c.relname::text AS v_name,
+    n.nspname::text AS schema,
+    c.relname::text AS view,
     CASE c.relkind
     WHEN 'v'::"char" THEN
         'view'::text
@@ -367,18 +365,18 @@ SELECT
     ELSE
         NULL::text
     END AS view_type,
-    pg_get_userbyid(c.relowner)::text AS owned_by,
+    pg_get_userbyid(c.relowner)::text AS owner,
     c.reltuples::bigint AS rows,
     pg_size_pretty(pg_table_size(c.oid::regclass))::text AS size_pretty,
     pg_table_size(c.oid::regclass)::bigint AS size_bytes,
-    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes,
+    pg_size_pretty(pg_total_relation_size(c.oid::regclass))::text AS size_plus_indexes_pretty,
     pg_total_relation_size(c.oid::regclass)::bigint AS size_plus_indexes_bytes,
     obj_description(c.oid, 'pg_class'::name)::text AS description,
-    CASE WHEN n.nspname !~ '^pg_toast'::text
-        AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) THEN
-        FALSE
-    ELSE
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
         TRUE
+    ELSE
+        FALSE
     END AS system_object,
     c.oid
 FROM
@@ -393,8 +391,8 @@ WHERE (c.relkind = ANY (ARRAY['v'::"char", 'm'::"char"]));
 --
 SELECT
     c.oid,
-    ns.nspname::text AS s_name,
-    c.relname::text AS t_name,
+    ns.nspname::text AS schema,
+    c.relname::text AS table,
     i.inhparent AS parent_oid,
     i.inhparent::regclass::text AS parent_name,
     c.relispartition::boolean AS declarative_partition,
@@ -420,8 +418,8 @@ WHERE
 WITH partition_parent AS (
     SELECT
         c.oid,
-        n.nspname::text AS s_name,
-        c.relname::text AS t_name,
+        n.nspname::text AS schema,
+        c.relname::text AS table,
         CASE WHEN pt.partrelid IS NOT NULL THEN
             'declarative'
         WHEN c.relkind = 'r' THEN
@@ -448,4 +446,3 @@ SELECT
     *
 FROM
     partition_parent;
-

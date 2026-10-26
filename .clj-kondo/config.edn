@@ -1,0 +1,7 @@
+{:linters
+ {:unused-public-var
+  {:exclude [notebook/db-up!
+             notebook/db-pgbench!
+             notebook/render!
+             notebook/copy!
+             notebook/publish!]}}}

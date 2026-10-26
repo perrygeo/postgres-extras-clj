@@ -22,28 +22,20 @@
 ;;; Use an embedded (but real!) postgres instance.
 
 (defn embedded-pg
-  "Fixture to start a postgres database in a temp dir.
-  Establishes the pg_stat_statements extension and reloads."
+  "Fixture to start a PostgreSQL database in a temp dir with
+  pg_stat_statements preloaded via shared_preload_libraries, then
+  create the extension before running tests."
   [f]
-  ;; TODO 
-  ;; First initialize, then install the pg_stat_statements extension,
-  ;; then must restart postmaster in in the same datadir.
-  ;; PROBLEM tried using (.setCleanDataDirectory false) in later restart
-  ;; still wipes out datadir due to (I believe) a bug in Zonky
-  ;#_(let [initial-pg (.start (-> (EmbeddedPostgres/builder)
-  ;                                (.setDataDirectory datadir)))]
-  ;     (with-open [con (jdbc/get-connection (make-ds initial-pg))]
-  ;       (jdbc/execute-one! con ["CREATE EXTENSION if not exists pg_stat_statements;"]))
-  ;     (.close initial-pg))
-  ;; Then restart the database in the same datadir to run the tests w/ binding...
   (let [datadir (str "/tmp/testdb-" (System/currentTimeMillis))
         test-pg (.start (-> (EmbeddedPostgres/builder)
-                            (.setDataDirectory datadir)))]
-    (binding [db (jdbc/get-datasource
-                  {:jdbcUrl
-                   (str
-                    (.getJdbcUrl ^EmbeddedPostgres test-pg "postgres" "postgres")
-                    "&password=password")})]
+                            (.setDataDirectory datadir)
+                            (.setServerConfig "shared_preload_libraries" "pg_stat_statements")))
+        ds      (jdbc/get-datasource
+                 {:jdbcUrl (str (.getJdbcUrl ^EmbeddedPostgres test-pg "postgres" "postgres")
+                                "&password=password")})]
+    (with-open [conn (jdbc/get-connection ds)]
+      (jdbc/execute-one! conn ["CREATE EXTENSION IF NOT EXISTS pg_stat_statements"]))
+    (binding [db ds]
       (f)
       (.close test-pg))))
 
@@ -55,23 +47,23 @@
 
 (def test-fns
   {:table-cache-hit
-   {:pred #(> (:ratio %) 0.985)
+   {:pred    #(> (:ratio %) 0.985)
     :onfalse "Table sees high block IO relative to buffer cache hit"
-    :idfn :name}})
+    :idfn    :table}})
 
 (defn mock-stats-buffered []
   {:table-cache-hit
    [{:block_reads 1
-     :schema "public"
-     :name "table-with-buffered-cache"
-     :ratio 0.99}]})
+     :schema      "public"
+     :table       "table-with-buffered-cache"
+     :ratio       0.99}]})
 
 (defn mock-stats-blockio []
   {:table-cache-hit
    [{:block_reads 100
-     :schema "public"
-     :name "table-with-much-block-io"
-     :ratio 0.45}]})
+     :schema      "public"
+     :table       "table-with-much-block-io"
+     :ratio       0.45}]})
 
 (deftest smoketest
   (testing
@@ -121,7 +113,7 @@
 
   ;; The following calls are covered by the read-stats fn
   ; (pgex/all-locks db) | Queries with active locks |
-  ; (pgex/blocking db) | Queries holding locks other queries are waiting to be released | 
+  ; (pgex/blocking db) | Queries holding locks other queries are waiting to be released |
   ; (pgex/bloat db) | Table and index "bloat" in your database ordered by most wasteful |
   ; (pgex/cache-hit db) | Index and table hit rate |
   ; (pgex/calls db) | Queries that have the highest frequency of execution |
@@ -153,12 +145,12 @@
 
   (testing
    "A few of the default system tables have COMMENTs, aka descriptions"
-    ;; for most everything else, you'll need to add your own comments 
+    ;; for most everything else, you'll need to add your own comments
     (let [schemas-with-comments (filter
                                  #(:description %)
                                  (map
-                                  #(let [d (:description %) n (:s_name %)]
-                                     {:description d :name n})
+                                  #(let [d (:description %) n (:schema %)]
+                                     {:description d :schema n})
                                   (pgex/schemas db)))]
       (is (>= (count schemas-with-comments) 3))))
 
@@ -168,6 +160,15 @@
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
     (is (= 9 (count (keys (pgex/read-data-dictionary db))))))
+
+  (testing
+   "system objects are filtered by default and included with the flag"
+    (let [dd-default (pgex/read-data-dictionary db)
+          dd-all     (pgex/read-data-dictionary db {:include-system-objects? true})]
+      (is (every? (complement :system_object) (:schemas dd-default)))
+      (is (some :system_object (:schemas dd-all)))
+      (is (every? (complement :system_object) (:tables dd-default)))
+      (is (every? (complement :system_object) (:columns dd-default)))))
 
   ; The following calls are covered by the read-data-dictionary fn
   ; | (columns db) | List all database column objects |
@@ -181,40 +182,64 @@
   ; | (views db) | List all view objects in current database |
   )
 
-(comment
-  ; Some stats are skipped (nil) due to the lack of pg_stat_statements extension in test.
-  ; Depending on whether your test database has pg_stat_statements or not,
-  ; you'll want to run one of these:
+(deftest pg-stat-statements-based
+  (testing "outliers returns the expected columns"
+    (let [rows (pgex/outliers db {:limit 10})]
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:query row))
+                         (number? (:exec_time_ms row))
+                         (number? (:prop_exec_time row))
+                         (integer? (:calls row))
+                         (number? (:sync_io_time_ms row))))
+                  rows))))
 
-  ; no extension, outliers and call will always be nil.
-  ; (testing
-  ;  "read all stats, filter for nils."
-  ;   (is (= '([:outliers nil]
-  ;            [:calls nil])
-  ;          (filter (fn [[_ v]] (nil? v))
-  ;                  (pgex/read-stats db)))))
+  (testing "calls returns the expected columns"
+    (let [rows (pgex/calls db {:limit 10})]
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:query row))
+                         (number? (:exec_time_ms row))
+                         (number? (:exec_time_ratio row))
+                         (integer? (:calls row))
+                         (number? (:sync_io_time_ms row))))
+                  rows))))
 
-  ; yes extension, outliers and call will always return times in decimal ms.
-  (deftest pg-stat-statements-based
-    (testing "outliers return exec time in ms"
-      (is (> (-> (pgex/outliers db {:limit 10}) first :exec_time_ms) 0M)))
-    (testing "outliers return sync io time in ms"
-      (is (>= (-> (pgex/outliers db {:limit 10}) first :sync_io_time_ms) 0M)))
-    (testing "calls return exec time in ms"
-      (is (> (-> (pgex/calls db {:limit 10}) first :exec_time_ms) 0M)))
-    (testing "calls return sync io time in ms"
-      (is (>= (-> (pgex/calls db {:limit 10}) first :sync_io_time_ms) 0M)))))
+  (testing "sync io time is non-negative"
+    (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/outliers db {:limit 10})))
+    (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/calls db {:limit 10})))))
+
+(deftest timescaledb-system-schemas
+  (testing "TimescaleDB internal schemas are flagged as system objects and filtered by default"
+    ;; Ensure a clean slate in case a previous run left these behind.
+    (jdbc/execute! db ["DROP SCHEMA IF EXISTS _timescaledb_internal CASCADE"])
+    (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_information CASCADE"])
+    (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_experimental CASCADE"])
+    (try
+      (jdbc/execute! db ["CREATE SCHEMA _timescaledb_internal"])
+      (jdbc/execute! db ["CREATE SCHEMA timescaledb_information"])
+      (jdbc/execute! db ["CREATE SCHEMA timescaledb_experimental"])
+      (let [ts-schemas (filter #(re-find #"timescaledb" (:schema %))
+                               (pgex/schemas db))]
+        (is (= 3 (count ts-schemas)))
+        (is (every? :system_object ts-schemas))
+        (is (not-any? #(re-find #"timescaledb" (:schema %))
+                      (:schemas (pgex/read-data-dictionary db)))))
+      (finally
+        (jdbc/execute! db ["DROP SCHEMA IF EXISTS _timescaledb_internal CASCADE"])
+        (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_information CASCADE"])
+        (jdbc/execute! db ["DROP SCHEMA IF EXISTS timescaledb_experimental CASCADE"])))))
 
 (comment
   ;; for testing another database,
   ;; instead of the embedded zonky db
   (def db
     (jdbc/get-datasource
-     {:dbtype "postgresql"
-      :dbname "main"
-      :host "localhost"
-      :port 5432
-      :user "postgres"
+     {:dbtype   "postgresql"
+      :dbname   "main"
+      :host     "localhost"
+      :port     5432
+      :user     "postgres"
       :password "password"})))
 
 (comment

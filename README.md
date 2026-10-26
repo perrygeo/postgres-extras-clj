@@ -3,7 +3,7 @@
 A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 
 ```clojure
-com.github.perrygeo/postgres-extras-clj {:mvn/version "0.1.25"}
+com.github.perrygeo/postgres-extras-clj {:mvn/version "0.2.22"}
 ```
 
 * [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
@@ -32,11 +32,11 @@ Understanding your database isn't optional.
 `postgres-extras-clj` provides this missing toolkit for Clojure developers.
 
 The SQL logic lives in [`resources/sql/*.sql`](resources/sql/) and is
-formatted with pgFormat for consistency. SQL is 
+formatted with pgFormat for consistency. SQL is
 annotated with [HugSQL](https://www.hugsql.org) comments to turn them
 into clojure fns via macro magic. Instead of a web interface or postgres extension,
-`postgres-extras-clj.core` provides a clojure namespace with a few dozen useful 
-functions that query system tables and **return diagnostics as plain data structures**. 
+`postgres-extras-clj.core` provides a clojure namespace with a few dozen useful
+functions that query system tables and **return diagnostics as plain data structures**.
 The goal is to run with limited, SELECT-only privileges
 of system schemas and tables (with a few noted exceptions).
 
@@ -44,7 +44,7 @@ All you need is a JDBC connection and a REPL.
 
 
 ### 📚 Data Dictionary
- 
+
 The data dictionary functionality is based on [pgdd](https://github.com/rustprooflabs/pgdd).
 These include COMMENTS and are helpful for understanding the structure
 of your database, from a data modeling lens.
@@ -64,6 +64,8 @@ of your database, from a data modeling lens.
 To get a full map of data objects, use `(read-data-dictionary db)` which
 returns a map, with keywords mirroring the above functions.
 
+System objects are excluded by default.
+Pass `(read-data-dictionary db {:include-system-objects? true})` to include them.
 
 ### 🛠️ Operational Diagnostics
 
@@ -74,7 +76,7 @@ These are valuable for looking at your database through an operations or DBA len
 |---------|---------|
 | `all-locks` | Queries with active locks |
 | `bloat` | Table and index "bloat" in your database ordered by most wasteful |
-| `blocking` | Queries holding locks other queries are waiting to be released | 
+| `blocking` | Queries holding locks other queries are waiting to be released |
 | `cache-hit` | Index and table hit rate |
 | `calls` | Queries that have the highest frequency of execution |
 | `connections` | Returns the list of all active database connections |
@@ -103,16 +105,20 @@ These are valuable for looking at your database through an operations or DBA len
 To get a full map of diagnostic stats, use `(read-stats db)` which
 returns a map, with keywords mirroring the above functions.
 
+Diagnostic queries exclude postgres schemas
+`pg_catalog`, `information_schema`, `pg_toast*`,
+and TimescaleDB's internal schemas.
+
 Use the `(diagnose (read-stats db))` and `(diagnose-warnings (read-stats db))` functions
-to evaluate the stats according to a set of heuristics. 
+to evaluate the stats according to a set of heuristics.
 
 
 
 ## Usage
 
-Check out the [examples](./examples/pgbench_tutorial.clj) if you're looking to create a fresh namespace. 
+Check out the [examples](./examples/pgbench_tutorial.clj) if you're looking to create a fresh namespace.
 
-The following is a REPL demonstration of `postgres-extras-clj` with the `next.jdbc` adapter. 
+The following is a REPL demonstration of `postgres-extras-clj` with the `next.jdbc` adapter.
 Run `clj -M:dev` then evaluate the following forms
 
 
@@ -152,28 +158,27 @@ Generate a data dictionary summarizing all major objects in your database.
 ;  :indexes
 ;  :schemas
 ;  :tables
-;  :views 
+;  :views
 ;  :partition-children
 ;  :partition-parents)
 
 (rand-nth (:tables dd))
 ; {:size_pretty "16 kB",
 ;  :description nil,
-;  :owned_by "postgres",
-;  :size_plus_indexes "48 kB",
+;  :owner "postgres",
+;  :size_plus_indexes_pretty "48 kB",
 ;  :rows 1,
 ;  :oid 19789,
 ;  :data_type "table",
 ;  :size_plus_indexes_bytes 49152,
-;  :s_name "public",
+;  :schema "public",
 ;  :system_object false,
-;  :t_name "users",
+;  :table "users",
 ;  :size_bytes 16384,
 ;  :bytes_per_row 16384}
 ```
 
-
-Create a full map of diagnostic stats. 
+Create a full map of diagnostic stats.
 
 ```clojure
 (def stats (pgex/read-stats db))
@@ -221,15 +226,15 @@ instead of getting them from the full map.
 (rand-nth (pgex/tables db))
 ; {:size_pretty "16 kB",
 ;  :description nil,
-;  :owned_by "postgres",
-;  :size_plus_indexes "48 kB",
+;  :owner "postgres",
+;  :size_plus_indexes_pretty "48 kB",
 ;  :rows 1,
 ;  :oid 19789,
 ;  :data_type "table",
 ;  :size_plus_indexes_bytes 49152,
-;  :s_name "public",
+;  :schema "public",
 ;  :system_object false,
-;  :t_name "users",
+;  :table "users",
 ;  :size_bytes 16384,
 ;  :bytes_per_row 16384}
 
@@ -256,7 +261,7 @@ To create your own diagnostics:
   {:table-cache-hit
    {:pred #(> (:ratio %) 0.999)
     :onfalse "The cache hit ratio is not as insanely high as I'd like."
-    :idfn :name}})
+    :idfn :table}})
 
 (doseq [w (pgex/diagnose-warnings
            (pgex/read-stats db)
@@ -264,28 +269,45 @@ To create your own diagnostics:
   (println (:message w)))
 
 ; ! Warning :table-cache-hit, message_topics, The cache hit ratio is not as insanely high as I'd like.
-; {:ratio 0.9806201550387597, :schema "public", :name "message_topics", :buffer_hits 253, :block_reads 5, :total_read 258}
+; {:ratio 0.9806201550387597, :schema "public", :table "message_topics", :buffer_hits 253, :block_reads 5, :total_read 258}
 ; ... many more
 ```
 
 
 ## Development
 
-```
+You'll need to install
+
+* `docker compose` (or some other means of running postgres)
+* `babashka`
+* `clj-kondo`
+
+You'll use `bb` for most day-to-day tasks
+
+```sh
 $ bb tasks
 The following tasks are available:
 
-test   Run tests with coverage
-dev-db Start a develpment Postgres database
-nrepl  Start nREPL server for development
-build  Build JAR file
-deploy Deploy JAR after running tests
+dev               Start the nREPL for local development
+test              Run the test suite against all currently supported PostgreSQL versions
+lint              Run clj-kondo linting over the project sources
+db:up             Ensure the pgbench PostgreSQL container is up, ready, and has required extensions enabled
+db:pgbench        Ensure the pgbench schema and at least one benchmark run are present (idempotent)
+db:benchmark      Force a fresh pgbench benchmark run to refresh stats
+notebook:render   Render examples/pgbench_tutorial.clj to target/clay with Clay + Quarto
+notebook:copy     Copy the rendered notebook artifacts from target/clay into doc/
+notebook:publish  Commit doc/ to the ghpages branch and push to origin
+notebook          Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages
+release:bump      Bump version files only (README.md, pom.xml, CHANGELOG.md) — no commit, tag, or push. bb release:bump 0.2.22
+release           Cut a release: bump version files, commit, tag v<version>, and push (bb release 0.2.22 [--no-push])
+jar               Build the JAR. Version = git tag at HEAD (untagged => 0.0.0-SNAPSHOT)
+publish           Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS_PASSWORD)
 ```
 
 
 ## License
 
-Copyright © 2024 Matthew T. Perry (`perrygeo`). 
+Copyright © 2026 Matthew T. Perry.
 Distributed under the MIT license.
 
 The credit for the SQL query logic goes

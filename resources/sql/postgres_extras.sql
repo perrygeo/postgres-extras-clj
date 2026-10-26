@@ -56,7 +56,7 @@ SELECT
     pg_locks.transactionid,
     pg_locks.granted,
     pg_locks.mode,
-    pg_stat_activity.query AS query_snippet,
+    pg_stat_activity.query AS query,
     age(now(), pg_stat_activity.query_start) AS "age"
 FROM
     pg_stat_activity,
@@ -143,7 +143,7 @@ table_bloat AS (
         JOIN pg_class cc ON cc.relname = bloat_info.tablename
         JOIN pg_namespace nn ON cc.relnamespace = nn.oid
             AND nn.nspname = bloat_info.schemaname
-            AND nn.nspname <> 'information_schema'
+            AND nn.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
 ),
 index_bloat AS (
     SELECT
@@ -159,13 +159,13 @@ index_bloat AS (
     JOIN pg_class cc ON cc.relname = bloat_info.tablename
     JOIN pg_namespace nn ON cc.relnamespace = nn.oid
         AND nn.nspname = bloat_info.schemaname
-        AND nn.nspname <> 'information_schema'
+        AND nn.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     JOIN pg_index i ON indrelid = cc.oid
     JOIN pg_class c2 ON c2.oid = i.indexrelid
 )
 SELECT
     type,
-    schemaname,
+    schemaname AS schema,
     object_name,
     bloat,
     waste
@@ -236,21 +236,21 @@ WHERE
 -- :result :many
 -- :doc Index and table hit rate
 SELECT
-    'index hit rate' AS name,
-    (sum(idx_blks_hit)) / nullif (sum(idx_blks_hit + idx_blks_read), 0) AS ratio
+    'index hit rate' AS metric,
+    ((sum(idx_blks_hit)) / nullif (sum(idx_blks_hit + idx_blks_read), 0))::float AS ratio
 FROM
     pg_statio_user_indexes
 UNION ALL
 SELECT
-    'table hit rate' AS name,
-    sum(heap_blks_hit) / nullif (sum(heap_blks_hit) + sum(heap_blks_read), 0) AS ratio
+    'table hit rate' AS metric,
+    (sum(heap_blks_hit) / nullif (sum(heap_blks_hit) + sum(heap_blks_read), 0))::float AS ratio
 FROM
     pg_statio_user_tables;
 
--- :name calls
+-- :name calls-legacy
 -- :command :query
 -- :result :many
--- :doc Queries that have the highest frequency of execution
+-- :doc Queries that have the highest frequency of execution (PostgreSQL < 17)
 /* HUG_PSQL_EXTRAS: Queries that have the highest frequency of execution */
 SELECT
     query AS query,
@@ -258,6 +258,33 @@ SELECT
     (total_exec_time / sum(total_exec_time) OVER ()) AS exec_time_ratio,
     calls,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * (blk_read_time + blk_write_time))) AS sync_io_time_ms
+FROM
+    pg_stat_statements
+WHERE
+    userid = (
+        SELECT
+            usesysid
+        FROM
+            pg_user
+        WHERE
+            usename = CURRENT_USER
+        LIMIT 1)
+    AND query NOT LIKE '/* HUG_PSQL_EXTRAS:%'
+ORDER BY
+    calls DESC
+LIMIT :v:limit;
+
+-- :name calls-pg17
+-- :command :query
+-- :result :many
+-- :doc Queries that have the highest frequency of execution (PostgreSQL >= 17)
+/* HUG_PSQL_EXTRAS: Queries that have the highest frequency of execution */
+SELECT
+    query AS query,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
+    (total_exec_time / sum(total_exec_time) OVER ()) AS exec_time_ratio,
+    calls,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * (shared_blk_read_time + shared_blk_write_time + local_blk_read_time + local_blk_write_time + temp_blk_read_time + temp_blk_write_time))) AS sync_io_time_ms
 FROM
     pg_stat_statements
 WHERE
@@ -294,8 +321,8 @@ WHERE
 -- :doc Values of selected PostgreSQL settings
 /* HUG_PSQL_EXTRAS: Values of selected PostgreSQL settings */
 SELECT
-    name,
-    setting,
+    name AS setting,
+    setting AS value,
     unit,
     short_desc
 FROM
@@ -309,7 +336,7 @@ WHERE
 -- :doc Multiple indexes that have the same set of columns, same opclass, expression and predicate
 /* HUG_PSQL_EXTRAS: Multiple indexes that have the same set of columns, same opclass, expression and predicate */
 SELECT
-    pg_size_pretty(sum(pg_relation_size(idx))::bigint) AS size,
+    sum(pg_relation_size(idx))::bigint AS size,
     (array_agg(idx))[1]::text AS idx1,
     (array_agg(idx))[2]::text AS idx2,
     (array_agg(idx))[3]::text AS idx3,
@@ -333,10 +360,10 @@ ORDER BY
 -- :doc Available and installed extensions
 /* HUG_PSQL_EXTRAS: Available and installed extensions */
 SELECT
-    name,
+    name AS extension,
     default_version,
     installed_version,
-    comment
+    comment AS description
 FROM
     pg_available_extensions
 ORDER BY
@@ -349,7 +376,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Calculates your cache hit rate for reading indexes */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS index,
     COALESCE(idx_blks_hit, 0) AS buffer_hits,
     COALESCE(idx_blks_read, 0) AS block_reads,
     COALESCE(idx_blks_hit + idx_blks_read, 0) AS total_read,
@@ -361,6 +388,8 @@ SELECT
     END ratio
 FROM
     pg_statio_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     idx_blks_hit / (idx_blks_hit + idx_blks_read + 1)::float DESC;
 
@@ -371,14 +400,13 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: The size of indexes, descending by size */
 SELECT
     n.nspname AS schema,
-    c.relname AS name,
+    c.relname AS index,
     sum(c.relpages::bigint * 8192)::bigint AS size
 FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind = 'i'
 GROUP BY
     (n.nspname,
@@ -393,16 +421,18 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Index hit rate (effective databases are at 99% and up) */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS table,
     CASE idx_scan
     WHEN 0 THEN
         NULL
     ELSE
-        (100 * idx_scan / (seq_scan + idx_scan))
-    END percent_of_times_index_used,
-    n_live_tup rows_in_table
+        (idx_scan::float / (seq_scan + idx_scan))
+    END index_usage_ratio,
+    n_live_tup AS rows
 FROM
     pg_stat_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     n_live_tup DESC;
 
@@ -431,7 +461,7 @@ SELECT
     pg_locks.transactionid,
     pg_locks.granted,
     pg_locks.mode,
-    pg_stat_activity.query AS query_snippet,
+    pg_stat_activity.query AS query,
     age(now(), pg_stat_activity.query_start) AS "age"
 FROM
     pg_stat_activity,
@@ -542,16 +572,11 @@ ORDER BY
 SELECT
     c.oid,
     c.relname AS index,
-    pg_size_pretty(pg_relation_size(c.oid)) AS index_size,
+    pg_relation_size(c.oid) AS index_size,
     i.indisunique AS unique,
-    a.attname AS indexed_column,
-    CASE s.null_frac
-    WHEN 0 THEN
-        ''
-    ELSE
-        to_char(s.null_frac * 100, '999.00%')
-    END AS null_frac,
-    pg_size_pretty((pg_relation_size(c.oid) * s.null_frac)::bigint) AS expected_saving
+    a.attname AS column,
+    s.null_frac AS null_frac,
+    (pg_relation_size(c.oid) * s.null_frac)::bigint AS expected_saving
 FROM
     pg_class c
     JOIN pg_index i ON i.indexrelid = c.oid
@@ -575,10 +600,10 @@ WHERE
 ORDER BY
     pg_relation_size(c.oid) * s.null_frac DESC;
 
--- :name outliers
+-- :name outliers-legacy
 -- :command :query
 -- :result :many
--- :doc Queries that have longest execution time in aggregate.
+-- :doc Queries that have longest execution time in aggregate (PostgreSQL < 17)
 /* HUG_PSQL_EXTRAS: Queries that have longest execution time in aggregate */
 SELECT
     query AS query,
@@ -602,6 +627,33 @@ ORDER BY
     total_exec_time DESC
 LIMIT :v:limit;
 
+-- :name outliers-pg17
+-- :command :query
+-- :result :many
+-- :doc Queries that have longest execution time in aggregate (PostgreSQL >= 17)
+/* HUG_PSQL_EXTRAS: Queries that have longest execution time in aggregate */
+SELECT
+    query AS query,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
+    (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
+    calls,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * (shared_blk_read_time + shared_blk_write_time + local_blk_read_time + local_blk_write_time + temp_blk_read_time + temp_blk_write_time))) AS sync_io_time_ms
+FROM
+    pg_stat_statements
+WHERE
+    userid = (
+        SELECT
+            usesysid
+        FROM
+            pg_user
+        WHERE
+            usename = CURRENT_USER
+        LIMIT 1)
+    AND query NOT LIKE '/* HUG_PSQL_EXTRAS:%'
+ORDER BY
+    total_exec_time DESC
+LIMIT :v:limit;
+
 -- :name records-rank
 -- :command :query
 -- :result :many
@@ -609,10 +661,12 @@ LIMIT :v:limit;
 /* HUG_PSQL_EXTRAS: All tables and the number of rows in each ordered by number of rows descending */
 SELECT
     schemaname AS schema,
-    relname AS name,
-    n_live_tup AS estimated_count
+    relname AS table,
+    n_live_tup AS rows
 FROM
     pg_stat_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     n_live_tup DESC;
 
@@ -623,10 +677,12 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Count of sequential scans by table descending by order */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS table,
     seq_scan AS count
 FROM
     pg_stat_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     seq_scan DESC;
 
@@ -637,7 +693,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Calculates your cache hit rate for reading tables */
 SELECT
     schemaname AS schema,
-    relname AS name,
+    relname AS table,
     COALESCE(heap_blks_hit, 0) AS buffer_hits,
     COALESCE(heap_blks_read, 0) AS block_reads,
     COALESCE(heap_blks_hit + heap_blks_read, 0) AS total_read,
@@ -649,6 +705,8 @@ SELECT
     END ratio
 FROM
     pg_statio_user_tables
+WHERE
+    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     heap_blks_hit / (heap_blks_hit + heap_blks_read + 1)::float DESC;
 
@@ -665,8 +723,7 @@ FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind IN ('r', 'm')
 ORDER BY
     pg_indexes_size(c.oid) DESC;
@@ -678,14 +735,13 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Size of the tables (excluding indexes), descending by size */
 SELECT
     n.nspname AS schema,
-    c.relname AS name,
+    c.relname AS table,
     pg_table_size(c.oid) AS size
 FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind IN ('r', 'm')
 ORDER BY
     pg_table_size(c.oid) DESC;
@@ -701,8 +757,7 @@ FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind = 'i';
 
 -- :name total-table-size
@@ -712,14 +767,13 @@ WHERE
 /* HUG_PSQL_EXTRAS: Size of the tables (including indexes), descending by size */
 SELECT
     n.nspname AS schema,
-    c.relname AS name,
+    c.relname AS table,
     pg_total_relation_size(c.oid) AS size
 FROM
     pg_class c
     LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)
 WHERE
-    n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND n.nspname !~ '^pg_toast'
+    n.nspname !~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$|information_schema)'
     AND c.relkind IN ('r', 'm')
 ORDER BY
     pg_total_relation_size(c.oid) DESC;
@@ -746,6 +800,7 @@ WHERE
     NOT indisunique
     AND idx_scan < :v:min_scans
     AND pg_relation_size(relid) > 5 * 8192
+    AND schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     pg_relation_size(i.indexrelid) / nullif (idx_scan, 0) DESC NULLS FIRST,
     pg_relation_size(i.indexrelid) DESC;
@@ -788,8 +843,8 @@ SELECT
     vacuum_settings.relname AS table,
     to_char(psut.last_vacuum, 'YYYY-MM-DD HH24:MI') AS last_vacuum,
     to_char(psut.last_autovacuum, 'YYYY-MM-DD HH24:MI') AS last_autovacuum,
-    pg_class.reltuples AS rowcount,
-    psut.n_dead_tup AS dead_rowcount,
+    pg_class.reltuples AS rows,
+    psut.n_dead_tup AS dead_rows,
     autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor::numeric * pg_class.reltuples) AS autovacuum_threshold,
     CASE WHEN autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor::numeric * pg_class.reltuples) < psut.n_dead_tup THEN
         'yes'
@@ -798,6 +853,8 @@ FROM
     pg_stat_user_tables psut
     INNER JOIN pg_class ON psut.relid = pg_class.oid
     INNER JOIN vacuum_settings ON pg_class.oid = vacuum_settings.oid
+WHERE
+    psut.schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     1;
 
@@ -809,4 +866,11 @@ ORDER BY
 SELECT
     now() AS now,
     version() AS version;
+
+-- :name server-version-num
+-- :command :query
+-- :result :one
+-- :doc Numeric PostgreSQL server version (e.g. 170005 for 17.5)
+SELECT
+    current_setting('server_version_num')::int AS version_num;
 
