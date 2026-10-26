@@ -307,7 +307,7 @@ publish           Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS
 
 ## License
 
-Copyright © 2024 Matthew T. Perry (`perrygeo`).
+Copyright © 2026 Matthew T. Perry.
 Distributed under the MIT license.
 
 The credit for the SQL query logic goes

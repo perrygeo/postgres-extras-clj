@@ -51,22 +51,6 @@
 (defn meta-as-header [x]
   (kind/md (str "### " (:doc (meta x)))))
 
-;;
-;; ## Setup
-;;
-
-;; Dependencies
-
-; ^:kindly/hide-code
-; (kind/md
-;  "```clojure
-;  {:deps {com.layerware/hugsql {:mvn/version \"0.5.3\"}
-;          com.layerware/hugsql-adapter-next-jdbc {:mvn/version \"0.5.3\"}
-;          org.scicloj/clay {:mvn/version \"2-beta11\"}
-;          org.postgresql/postgresql {:mvn/version \"42.7.3\"}
-;          seancorfield/next.jdbc {:mvn/version \"1.2.659\"}}}
-;   ```")
-
 ; ### Database benchmark
 
 ; We'll use [`pgbench`](https://www.postgresql.org/docs/current/pgbench.html) to get a database populated with interesting tables:
