@@ -84,23 +84,6 @@ and converted to HTML using [Clay](https://scicloj.github.io/clay/#api).
 
 
 
-
-## Setup
-
-
-Dependencies
-
-^:kindly/hide-code
-(kind/md
- "```clojure
- {:deps {com.layerware/hugsql {:mvn/version \"0.5.3\"}
-         com.layerware/hugsql-adapter-next-jdbc {:mvn/version \"0.5.3\"}
-         org.scicloj/clay {:mvn/version \"2-beta11\"}
-         org.postgresql/postgresql {:mvn/version \"42.7.3\"}
-         seancorfield/next.jdbc {:mvn/version \"1.2.659\"}}}
-  ```")
-
-
 ### Database benchmark
 
 We'll use [`pgbench`](https://www.postgresql.org/docs/current/pgbench.html) to get a database populated with interesting tables:
@@ -179,9 +162,9 @@ Do a health check to ensure connectivity
 
 ::: {.printedClojure}
 ```clojure
-{:now #inst "2026-10-25T21:40:02.467363000-00:00",
+{:now #inst "2026-10-26T01:20:31.990603000-00:00",
  :version
- "PostgreSQL 16.4 (Debian 16.4-1.pgdg110+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 10.2.1-6) 10.2.1 20210110, 64-bit"}
+ "PostgreSQL 16.9 (Debian 16.9-1.pgdg110+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 10.2.1-6) 10.2.1 20210110, 64-bit"}
 
 ```
 :::
@@ -216,7 +199,7 @@ Here's my configuration tuned for test/dev on my laptop.
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>setting</th><th>value</th><th>unit</th><th>short_desc</th></tr></thead><tbody><tr><td>checkpoint_completion_target</td><td>0.75</td><td></td><td>Time spent flushing dirty buffers during checkpoint, as fraction of checkpoint interval.</td></tr><tr><td>default_statistics_target</td><td>100</td><td></td><td>Sets the default statistics target.</td></tr><tr><td>effective_cache_size</td><td>524288</td><td>8kB</td><td>Sets the planner's assumption about the total size of the data caches.</td></tr><tr><td>effective_io_concurrency</td><td>1</td><td></td><td>Number of simultaneous requests that can be handled efficiently by the disk subsystem.</td></tr><tr><td>maintenance_work_mem</td><td>655360</td><td>kB</td><td>Sets the maximum memory to be used for maintenance operations.</td></tr><tr><td>max_connections</td><td>400</td><td></td><td>Sets the maximum number of concurrent connections.</td></tr><tr><td>max_wal_size</td><td>1024</td><td>MB</td><td>Sets the WAL size that triggers a checkpoint.</td></tr><tr><td>min_wal_size</td><td>80</td><td>MB</td><td>Sets the minimum size to shrink the WAL to.</td></tr><tr><td>random_page_cost</td><td>4</td><td></td><td>Sets the planner's estimate of the cost of a nonsequentially fetched disk page.</td></tr><tr><td>shared_buffers</td><td>263168</td><td>8kB</td><td>Sets the number of shared memory buffers used by the server.</td></tr><tr><td>wal_buffers</td><td>2048</td><td>8kB</td><td>Sets the number of disk-page buffers in shared memory for WAL.</td></tr><tr><td>work_mem</td><td>40960</td><td>kB</td><td>Sets the maximum memory to be used for query workspaces.</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>setting</th><th>value</th><th>unit</th><th>short_desc</th></tr></thead><tbody><tr><td>checkpoint_completion_target</td><td>0.75</td><td></td><td>Time spent flushing dirty buffers during checkpoint, as fraction of checkpoint interval.</td></tr><tr><td>default_statistics_target</td><td>100</td><td></td><td>Sets the default statistics target.</td></tr><tr><td>effective_cache_size</td><td>524288</td><td>8kB</td><td>Sets the planner's assumption about the total size of the data caches.</td></tr><tr><td>effective_io_concurrency</td><td>1</td><td></td><td>Number of simultaneous requests that can be handled efficiently by the disk subsystem.</td></tr><tr><td>maintenance_work_mem</td><td>655360</td><td>kB</td><td>Sets the maximum memory to be used for maintenance operations.</td></tr><tr><td>max_connections</td><td>40</td><td></td><td>Sets the maximum number of concurrent connections.</td></tr><tr><td>max_wal_size</td><td>1024</td><td>MB</td><td>Sets the WAL size that triggers a checkpoint.</td></tr><tr><td>min_wal_size</td><td>80</td><td>MB</td><td>Sets the minimum size to shrink the WAL to.</td></tr><tr><td>random_page_cost</td><td>4</td><td></td><td>Sets the planner's estimate of the cost of a nonsequentially fetched disk page.</td></tr><tr><td>shared_buffers</td><td>131072</td><td>8kB</td><td>Sets the number of shared memory buffers used by the server.</td></tr><tr><td>wal_buffers</td><td>2048</td><td>8kB</td><td>Sets the number of disk-page buffers in shared memory for WAL.</td></tr><tr><td>work_mem</td><td>40960</td><td>kB</td><td>Sets the maximum memory to be used for query workspaces.</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -293,7 +276,7 @@ Or one object, one item at time
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>oid</th><th>database</th><th>db_size_bytes</th><th>db_size_pretty</th><th>table_count</th><th>size_in_tables_bytes</th><th>size_in_tables_pretty</th><th>extension_count</th></tr></thead><tbody><tr><td>19699</td><td>main</td><td>169464291</td><td>162 MB</td><td>72</td><td>169861120</td><td>162 MB</td><td>2</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>oid</th><th>database</th><th>db_size_bytes</th><th>db_size_pretty</th><th>table_count</th><th>size_in_tables_bytes</th><th>size_in_tables_pretty</th><th>extension_count</th></tr></thead><tbody><tr><td>19699</td><td>main</td><td>169038307</td><td>161 MB</td><td>72</td><td>169435136</td><td>162 MB</td><td>2</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
 ```
 
 :::
@@ -308,10 +291,10 @@ example row
 ```clojure
 {:oid 19699,
  :database "main",
- :db_size_bytes 169464291,
- :db_size_pretty "162 MB",
+ :db_size_bytes 169038307,
+ :db_size_pretty "161 MB",
  :table_count 72,
- :size_in_tables_bytes 169861120M,
+ :size_in_tables_bytes 169435136M,
  :size_in_tables_pretty "162 MB",
  :extension_count 2}
 
@@ -333,7 +316,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>size_pretty</th><th>description</th><th>view_count</th><th>schema</th><th>table_count</th><th>function_count</th><th>size_plus_indexes_bytes</th><th>size_plus_indexes_pretty</th><th>system_object</th><th>owner</th><th>size_bytes</th></tr></thead><tbody><tr><td>133 MB</td><td>standard public schema</td><td>2</td><td>public</td><td>4</td><td>3</td><td>161652736</td><td>154 MB</td><td>false</td><td>pg_database_owner</td><td>139132928</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>size_pretty</th><th>description</th><th>view_count</th><th>schema</th><th>table_count</th><th>function_count</th><th>size_plus_indexes_bytes</th><th>size_plus_indexes_pretty</th><th>system_object</th><th>owner</th><th>size_bytes</th></tr></thead><tbody><tr><td>132 MB</td><td>standard public schema</td><td>2</td><td>public</td><td>4</td><td>3</td><td>161259520</td><td>154 MB</td><td>false</td><td>pg_database_owner</td><td>138739712</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
 ```
 
 :::
@@ -346,17 +329,17 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:size_pretty "133 MB",
+{:size_pretty "132 MB",
  :description "standard public schema",
  :view_count 2,
  :schema "public",
  :table_count 4,
  :function_count 3,
- :size_plus_indexes_bytes 161652736,
+ :size_plus_indexes_bytes 161259520,
  :size_plus_indexes_pretty "154 MB",
  :system_object false,
  :owner "pg_database_owner",
- :size_bytes 139132928}
+ :size_bytes 138739712}
 
 ```
 :::
@@ -376,7 +359,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>size_pretty</th><th>description</th><th>schema</th><th>rows</th><th>oid</th><th>size_plus_indexes_bytes</th><th>size_plus_indexes_pretty</th><th>system_object</th><th>owner</th><th>view_type</th><th>view</th><th>size_bytes</th></tr></thead><tbody><tr><td>0 bytes</td><td></td><td>public</td><td>-1</td><td>19799</td><td>0</td><td>0 bytes</td><td>false</td><td>postgres</td><td>view</td><td>pg_stat_statements_info</td><td>0</td></tr><tr><td>0 bytes</td><td></td><td>public</td><td>-1</td><td>19810</td><td>0</td><td>0 bytes</td><td>false</td><td>postgres</td><td>view</td><td>pg_stat_statements</td><td>0</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>size_pretty</th><th>description</th><th>schema</th><th>rows</th><th>oid</th><th>size_plus_indexes_bytes</th><th>size_plus_indexes_pretty</th><th>system_object</th><th>owner</th><th>view_type</th><th>view</th><th>size_bytes</th></tr></thead><tbody><tr><td>0 bytes</td><td></td><td>public</td><td>-1</td><td>66351</td><td>0</td><td>0 bytes</td><td>false</td><td>postgres</td><td>view</td><td>pg_stat_statements_info</td><td>0</td></tr><tr><td>0 bytes</td><td></td><td>public</td><td>-1</td><td>66362</td><td>0</td><td>0 bytes</td><td>false</td><td>postgres</td><td>view</td><td>pg_stat_statements</td><td>0</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
 ```
 
 :::
@@ -393,7 +376,7 @@ example row
  :description nil,
  :schema "public",
  :rows -1,
- :oid 19799,
+ :oid 66351,
  :size_plus_indexes_bytes 0,
  :size_plus_indexes_pretty "0 bytes",
  :system_object false,
@@ -420,7 +403,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>index</th><th>total_columns</th><th>unique_index</th><th>index_size_pretty</th><th>rows_indexed</th><th>oid</th><th>index_size_bytes</th><th>partial_index</th><th>key_columns</th><th>valid_index</th><th>system_object</th><th>primary_key</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>pgbench_branches_pkey</td><td>1</td><td>true</td><td>16 kB</td><td>10.0</td><td>19750</td><td>16384</td><td>false</td><td>1</td><td>true</td><td>false</td><td>true</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>pgbench_tellers_pkey</td><td>1</td><td>true</td><td>16 kB</td><td>100.0</td><td>19752</td><td>16384</td><td>false</td><td>1</td><td>true</td><td>false</td><td>true</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>pgbench_accounts_pkey</td><td>1</td><td>true</td><td>21 MB</td><td>999996.0</td><td>19754</td><td>22487040</td><td>false</td><td>1</td><td>true</td><td>false</td><td>true</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>index</th><th>total_columns</th><th>unique_index</th><th>index_size_pretty</th><th>rows_indexed</th><th>oid</th><th>index_size_bytes</th><th>partial_index</th><th>key_columns</th><th>valid_index</th><th>system_object</th><th>primary_key</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>pgbench_branches_pkey</td><td>1</td><td>true</td><td>16 kB</td><td>10.0</td><td>66383</td><td>16384</td><td>false</td><td>1</td><td>true</td><td>false</td><td>true</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>pgbench_tellers_pkey</td><td>1</td><td>true</td><td>16 kB</td><td>100.0</td><td>66385</td><td>16384</td><td>false</td><td>1</td><td>true</td><td>false</td><td>true</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>pgbench_accounts_pkey</td><td>1</td><td>true</td><td>21 MB</td><td>1000000.0</td><td>66387</td><td>22487040</td><td>false</td><td>1</td><td>true</td><td>false</td><td>true</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
 ```
 
 :::
@@ -440,7 +423,7 @@ example row
  :unique_index true,
  :index_size_pretty "16 kB",
  :rows_indexed 10.0,
- :oid 19750,
+ :oid 66383,
  :index_size_bytes 16384,
  :partial_index false,
  :key_columns 1,
@@ -466,7 +449,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>description</th><th>schema</th><th>table</th><th>generated_column</th><th>source_type</th><th>column</th><th>data_type</th><th>position</th><th>system_object</th><th>default_value</th></tr></thead><tbody><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>tid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>aid</td><td>int4</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>delta</td><td>int4</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>mtime</td><td>timestamp</td><td>5</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>6</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>tid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>tbalance</td><td>int4</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>aid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>abalance</td><td>int4</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_branches</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_branches</td><td>false</td><td>table</td><td>bbalance</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_branches</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements_info</td><td>false</td><td>view</td><td>dealloc</td><td>int8</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements_info</td><td>false</td><td>view</td><td>stats_reset</td><td>timestamptz</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>userid</td><td>oid</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>dbid</td><td>oid</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>toplevel</td><td>bool</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>queryid</td><td>int8</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>query</td><td>text</td><td>5</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>plans</td><td>int8</td><td>6</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>total_plan_time</td><td>float8</td><td>7</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>min_plan_time</td><td>float8</td><td>8</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>max_plan_time</td><td>float8</td><td>9</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>mean_plan_time</td><td>float8</td><td>10</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>stddev_plan_time</td><td>float8</td><td>11</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>calls</td><td>int8</td><td>12</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>total_exec_time</td><td>float8</td><td>13</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>min_exec_time</td><td>float8</td><td>14</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>max_exec_time</td><td>float8</td><td>15</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>mean_exec_time</td><td>float8</td><td>16</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>stddev_exec_time</td><td>float8</td><td>17</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>rows</td><td>int8</td><td>18</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_hit</td><td>int8</td><td>19</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_read</td><td>int8</td><td>20</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_dirtied</td><td>int8</td><td>21</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_written</td><td>int8</td><td>22</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_hit</td><td>int8</td><td>23</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_read</td><td>int8</td><td>24</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_dirtied</td><td>int8</td><td>25</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_written</td><td>int8</td><td>26</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blks_read</td><td>int8</td><td>27</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blks_written</td><td>int8</td><td>28</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>blk_read_time</td><td>float8</td><td>29</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>blk_write_time</td><td>float8</td><td>30</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blk_read_time</td><td>float8</td><td>31</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blk_write_time</td><td>float8</td><td>32</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>wal_records</td><td>int8</td><td>33</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>wal_fpi</td><td>int8</td><td>34</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>wal_bytes</td><td>numeric</td><td>35</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_functions</td><td>int8</td><td>36</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_generation_time</td><td>float8</td><td>37</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_inlining_count</td><td>int8</td><td>38</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_inlining_time</td><td>float8</td><td>39</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_optimization_count</td><td>int8</td><td>40</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_optimization_time</td><td>float8</td><td>41</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_emission_count</td><td>int8</td><td>42</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_emission_time</td><td>float8</td><td>43</td><td>false</td><td></td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":true,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>description</th><th>schema</th><th>table</th><th>generated_column</th><th>source_type</th><th>column</th><th>data_type</th><th>position</th><th>system_object</th><th>default_value</th></tr></thead><tbody><tr><td></td><td>public</td><td>pg_stat_statements_info</td><td>false</td><td>view</td><td>dealloc</td><td>int8</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements_info</td><td>false</td><td>view</td><td>stats_reset</td><td>timestamptz</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>userid</td><td>oid</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>dbid</td><td>oid</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>toplevel</td><td>bool</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>queryid</td><td>int8</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>query</td><td>text</td><td>5</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>plans</td><td>int8</td><td>6</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>total_plan_time</td><td>float8</td><td>7</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>min_plan_time</td><td>float8</td><td>8</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>max_plan_time</td><td>float8</td><td>9</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>mean_plan_time</td><td>float8</td><td>10</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>stddev_plan_time</td><td>float8</td><td>11</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>calls</td><td>int8</td><td>12</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>total_exec_time</td><td>float8</td><td>13</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>min_exec_time</td><td>float8</td><td>14</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>max_exec_time</td><td>float8</td><td>15</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>mean_exec_time</td><td>float8</td><td>16</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>stddev_exec_time</td><td>float8</td><td>17</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>rows</td><td>int8</td><td>18</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_hit</td><td>int8</td><td>19</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_read</td><td>int8</td><td>20</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_dirtied</td><td>int8</td><td>21</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>shared_blks_written</td><td>int8</td><td>22</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_hit</td><td>int8</td><td>23</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_read</td><td>int8</td><td>24</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_dirtied</td><td>int8</td><td>25</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>local_blks_written</td><td>int8</td><td>26</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blks_read</td><td>int8</td><td>27</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blks_written</td><td>int8</td><td>28</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>blk_read_time</td><td>float8</td><td>29</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>blk_write_time</td><td>float8</td><td>30</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blk_read_time</td><td>float8</td><td>31</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>temp_blk_write_time</td><td>float8</td><td>32</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>wal_records</td><td>int8</td><td>33</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>wal_fpi</td><td>int8</td><td>34</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>wal_bytes</td><td>numeric</td><td>35</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_functions</td><td>int8</td><td>36</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_generation_time</td><td>float8</td><td>37</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_inlining_count</td><td>int8</td><td>38</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_inlining_time</td><td>float8</td><td>39</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_optimization_count</td><td>int8</td><td>40</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_optimization_time</td><td>float8</td><td>41</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_emission_count</td><td>int8</td><td>42</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pg_stat_statements</td><td>false</td><td>view</td><td>jit_emission_time</td><td>float8</td><td>43</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>tid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>aid</td><td>int4</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>delta</td><td>int4</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>mtime</td><td>timestamp</td><td>5</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_history</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>6</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>tid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>tbalance</td><td>int4</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_tellers</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>aid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>abalance</td><td>int4</td><td>3</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_accounts</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>4</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_branches</td><td>false</td><td>table</td><td>bid</td><td>int4</td><td>1</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_branches</td><td>false</td><td>table</td><td>bbalance</td><td>int4</td><td>2</td><td>false</td><td></td></tr><tr><td></td><td>public</td><td>pgbench_branches</td><td>false</td><td>table</td><td>filler</td><td>bpchar</td><td>3</td><td>false</td><td></td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":true,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
 ```
 
 :::
@@ -481,11 +464,11 @@ example row
 ```clojure
 {:description nil,
  :schema "public",
- :table "pgbench_history",
+ :table "pg_stat_statements_info",
  :generated_column false,
- :source_type "table",
- :column "tid",
- :data_type "int4",
+ :source_type "view",
+ :column "dealloc",
+ :data_type "int8",
  :position 1,
  :system_object false,
  :default_value nil}
@@ -508,7 +491,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>size_pretty</th><th>description</th><th>schema</th><th>table</th><th>rows</th><th>oid</th><th>data_type</th><th>size_plus_indexes_bytes</th><th>size_plus_indexes_pretty</th><th>system_object</th><th>owner</th><th>size_bytes</th><th>bytes_per_row</th></tr></thead><tbody><tr><td>160 kB</td><td></td><td>public</td><td>pgbench_branches</td><td>10</td><td>19743</td><td>table</td><td>180224</td><td>176 kB</td><td>false</td><td>postgres</td><td>163840</td><td>16384</td></tr><tr><td>224 kB</td><td></td><td>public</td><td>pgbench_tellers</td><td>100</td><td>19737</td><td>table</td><td>245760</td><td>240 kB</td><td>false</td><td>postgres</td><td>229376</td><td>2294</td></tr><tr><td>131 MB</td><td></td><td>public</td><td>pgbench_accounts</td><td>999996</td><td>19740</td><td>table</td><td>159342592</td><td>152 MB</td><td>false</td><td>postgres</td><td>136855552</td><td>137</td></tr><tr><td>1840 kB</td><td></td><td>public</td><td>pgbench_history</td><td>32000</td><td>19734</td><td>table</td><td>1884160</td><td>1840 kB</td><td>false</td><td>postgres</td><td>1884160</td><td>59</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>size_pretty</th><th>description</th><th>schema</th><th>table</th><th>rows</th><th>oid</th><th>data_type</th><th>size_plus_indexes_bytes</th><th>size_plus_indexes_pretty</th><th>system_object</th><th>owner</th><th>size_bytes</th><th>bytes_per_row</th></tr></thead><tbody><tr><td>192 kB</td><td></td><td>public</td><td>pgbench_branches</td><td>10</td><td>66376</td><td>table</td><td>212992</td><td>208 kB</td><td>false</td><td>postgres</td><td>196608</td><td>19661</td></tr><tr><td>216 kB</td><td></td><td>public</td><td>pgbench_tellers</td><td>100</td><td>66370</td><td>table</td><td>237568</td><td>232 kB</td><td>false</td><td>postgres</td><td>221184</td><td>2212</td></tr><tr><td>130 MB</td><td></td><td>public</td><td>pgbench_accounts</td><td>1000000</td><td>66373</td><td>table</td><td>158932992</td><td>152 MB</td><td>false</td><td>postgres</td><td>136445952</td><td>136</td></tr><tr><td>1832 kB</td><td></td><td>public</td><td>pgbench_history</td><td>-1</td><td>66367</td><td>table</td><td>1875968</td><td>1832 kB</td><td>false</td><td>postgres</td><td>1875968</td><td></td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
 ```
 
 :::
@@ -521,19 +504,19 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:size_pretty "160 kB",
+{:size_pretty "192 kB",
  :description nil,
  :schema "public",
  :table "pgbench_branches",
  :rows 10,
- :oid 19743,
+ :oid 66376,
  :data_type "table",
- :size_plus_indexes_bytes 180224,
- :size_plus_indexes_pretty "176 kB",
+ :size_plus_indexes_bytes 212992,
+ :size_plus_indexes_pretty "208 kB",
  :system_object false,
  :owner "postgres",
- :size_bytes 163840,
- :bytes_per_row 16384}
+ :size_bytes 196608,
+ :bytes_per_row 19661}
 
 ```
 :::
@@ -651,7 +634,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>last_vacuum</th><th>last_autovacuum</th><th>rows</th><th>dead_rows</th><th>autovacuum_threshold</th><th>expect_autovacuum</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>2026-10-25 15:36</td><td>2026-10-25 15:37</td><td>10.0</td><td>0</td><td>50.2</td><td></td></tr><tr><td>public</td><td>pgbench_tellers</td><td>2026-10-25 15:36</td><td>2026-10-25 15:37</td><td>100.0</td><td>0</td><td>52.0</td><td></td></tr><tr><td>public</td><td>pgbench_accounts</td><td>2026-10-25 15:33</td><td>2026-10-25 15:36</td><td>999996.0</td><td>1212</td><td>20049.920000000002</td><td></td></tr><tr><td>public</td><td>pgbench_history</td><td>2026-10-25 15:33</td><td>2026-10-25 15:36</td><td>32000.0</td><td>0</td><td>690.0</td><td></td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>last_vacuum</th><th>last_autovacuum</th><th>rows</th><th>dead_rows</th><th>autovacuum_threshold</th><th>expect_autovacuum</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>2026-10-25 19:20</td><td></td><td>10.0</td><td>1344</td><td>50.2</td><td>yes</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>2026-10-25 19:20</td><td></td><td>100.0</td><td>2068</td><td>52.0</td><td>yes</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>2026-10-25 19:20</td><td></td><td>1000000.0</td><td>24048</td><td>20050.0</td><td>yes</td></tr><tr><td>public</td><td>pgbench_history</td><td>2026-10-25 19:20</td><td></td><td>-1.0</td><td>0</td><td>49.98</td><td></td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":true,"pageLength":12});</script></table>
 ```
 
 :::
@@ -666,12 +649,12 @@ example row
 ```clojure
 {:schema "public",
  :table "pgbench_branches",
- :last_vacuum "2026-10-25 15:36",
- :last_autovacuum "2026-10-25 15:37",
+ :last_vacuum "2026-10-25 19:20",
+ :last_autovacuum nil,
  :rows 10.0,
- :dead_rows 0,
+ :dead_rows 1344,
  :autovacuum_threshold 50.2,
- :expect_autovacuum nil}
+ :expect_autovacuum "yes"}
 
 ```
 :::
@@ -691,7 +674,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>index_usage_ratio</th><th>rows</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>0.9999791671006854</td><td>999996</td></tr><tr><td>public</td><td>pgbench_history</td><td></td><td>32000</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>0.9356372215842064</td><td>100</td></tr><tr><td>public</td><td>pgbench_branches</td><td>0.9254875767056884</td><td>10</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>index_usage_ratio</th><th>rows</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>0.9999583350693722</td><td>1000000</td></tr><tr><td>public</td><td>pgbench_history</td><td></td><td>32000</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>0.9974375800756227</td><td>100</td></tr><tr><td>public</td><td>pgbench_branches</td><td>0.4845644294463192</td><td>10</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -706,8 +689,8 @@ example row
 ```clojure
 {:schema "public",
  :table "pgbench_accounts",
- :index_usage_ratio 0.9999791671006854,
- :rows 999996}
+ :index_usage_ratio 0.9999583350693722,
+ :rows 1000000}
 
 ```
 :::
@@ -757,7 +740,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>metric</th><th>ratio</th></tr></thead><tbody><tr><td>index hit rate</td><td>0.998407871105322</td></tr><tr><td>table hit rate</td><td>0.9939929746862</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>metric</th><th>ratio</th></tr></thead><tbody><tr><td>index hit rate</td><td>0.9935828152975972</td></tr><tr><td>table hit rate</td><td>0.9790910081743869</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -770,7 +753,7 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:metric "index hit rate", :ratio 0.998407871105322}
+{:metric "index hit rate", :ratio 0.9935828152975972}
 
 ```
 :::
@@ -790,7 +773,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>rows</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>999996</td></tr><tr><td>public</td><td>pgbench_history</td><td>32000</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>100</td></tr><tr><td>public</td><td>pgbench_branches</td><td>10</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>rows</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>1000000</td></tr><tr><td>public</td><td>pgbench_history</td><td>32000</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>100</td></tr><tr><td>public</td><td>pgbench_branches</td><td>10</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -803,7 +786,7 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:schema "public", :table "pgbench_accounts", :rows 999996}
+{:schema "public", :table "pgbench_accounts", :rows 1000000}
 
 ```
 :::
@@ -823,7 +806,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>index</th><th>buffer_hits</th><th>block_reads</th><th>total_read</th><th>ratio</th></tr></thead><tbody><tr><td>public</td><td>pgbench_history</td><td>0</td><td>0</td><td>0</td><td>0.0</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>240271</td><td>2</td><td>240273</td><td>0.999991676135063</td></tr><tr><td>public</td><td>pgbench_branches</td><td>237684</td><td>2</td><td>237686</td><td>0.9999915855372213</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>1245915</td><td>2745</td><td>1248660</td><td>0.9978016433616838</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>index</th><th>buffer_hits</th><th>block_reads</th><th>total_read</th><th>ratio</th></tr></thead><tbody><tr><td>public</td><td>pgbench_history</td><td>0</td><td>0</td><td>0</td><td>0.0</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>64438</td><td>2</td><td>64440</td><td>0.9999689633767846</td></tr><tr><td>public</td><td>pgbench_branches</td><td>31430</td><td>2</td><td>31432</td><td>0.9999363705777552</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>329764</td><td>2745</td><td>332509</td><td>0.9917445843571151</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -865,86 +848,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>query</th><th>exec_time_ms</th><th>prop_exec_time</th><th>calls</th><th>sync_io_time_ms</th></tr></thead><tbody><tr><td>UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2</td><td>43769.645</td><td>0.6941387547873381</td><td>128000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2</td><td>28899.847</td><td>0.29291941368484714</td><td>128000</td><td>0.000</td></tr><tr><td>INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)</td><td>9053.035</td><td>0.005907352792326236</td><td>128000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2</td><td>4733.645</td><td>0.003088832465274591</td><td>128000</td><td>0.000</td></tr><tr><td>SELECT abalance FROM pgbench_accounts WHERE aid = $1</td><td>1068.892</td><td>6.974814250792631E-4</td><td>128000</td><td>0.000</td></tr><tr><td>WITH RECURSIVE Z (
-    IX,
-    IY,
-    CX,
-    CY,
-    X,
-    Y,
-    I
-) AS (
-    SELECT
-        IX,
-        IY,
-        X::float,
-        Y::float,
-        X::float,
-        Y::float,
-        $1
-    FROM (
-        SELECT
-            $2 + $3 * i,
-            i
-        FROM
-            generate_series($4, $5) AS i) AS xgen (x,
-        ix),
-    (
-        SELECT
-            $6 + $7 * i,
-            i
-        FROM
-            generate_series($8, $9) AS i) AS ygen (y,
-            iy)
-    UNION ALL
-    SELECT
-        IX,
-        IY,
-        CX,
-        CY,
-        X * X - Y * Y + CX AS X,
-        Y * X * $10 + CY,
-        I + $11
-    FROM
-        Z
-    WHERE
-        X * X + Y * Y < $12::float
-        AND I < $13
-)
-SELECT
-    array_to_string(array_agg(SUBSTRING($14, LEAST (GREATEST (I, $15), $16), $17)), $18) AS art
-FROM (
-    SELECT
-        IX,
-        IY,
-        MAX(I) AS I
-    FROM
-        Z
-    GROUP BY
-        IY,
-        IX
-    ORDER BY
-        IY,
-        IX) AS ZT
-GROUP BY
-    IY
-ORDER BY
-    IY</td><td>582.650</td><td>3.8019529506231784E-4</td><td>5</td><td>0.000</td></tr><tr><td>CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder</td><td>567.858</td><td>3.7054255304579353E-4</td><td>1</td><td>0.000</td></tr><tr><td>copy pgbench_accounts from stdin with (freeze on)</td><td>548.066</td><td>3.576281767152111E-4</td><td>1</td><td>0.000</td></tr><tr><td>CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder</td><td>458.261</td><td>2.9902780681764323E-4</td><td>1</td><td>0.000</td></tr><tr><td>SELECT
-    n.nspname::text AS schema,
-    p.proname::text AS function, pg_get_function_result(p.oid)::text AS result_data_types, pg_get_function_arguments(p.oid)::text AS argument_data_types, pg_get_userbyid(p.proowner)::text AS owner, CASE WHEN p.prosecdef THEN
-        $1::text
-    ELSE
-        $2::text
-    END AS proc_security, array_to_string(p.proacl, $3::text) AS access_privileges, l.lanname::text AS proc_language, p.prosrc::text AS source_code, obj_description(p.oid, $4::name)::text AS description, CASE WHEN n.nspname ~ $5::text
-        OR n.nspname = $6::name THEN
-        $7
-    ELSE
-        $8
-    END AS system_object
-FROM
-    pg_proc p
-    LEFT JOIN pg_namespace n ON n.oid = p.pronamespace
-    LEFT JOIN pg_language l ON l.oid = p.prolang</td><td>426.755</td><td>2.784693430888955E-4</td><td>12</td><td>0.000</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>query</th><th>exec_time_ms</th><th>prop_exec_time</th><th>calls</th><th>sync_io_time_ms</th></tr></thead><tbody><tr><td>UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2</td><td>49473.195</td><td>0.690894794065738</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2</td><td>36610.332</td><td>0.29087308131532197</td><td>32000</td><td>0.000</td></tr><tr><td>INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)</td><td>2424.626</td><td>0.007300031640973953</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2</td><td>1168.237</td><td>0.0035173112436317922</td><td>32000</td><td>0.000</td></tr><tr><td>copy pgbench_accounts from stdin with (freeze on)</td><td>506.178</td><td>0.0015239925068128216</td><td>1</td><td>0.000</td></tr><tr><td>COPY adsb_message (icao24, callsign, altitude_ft, speed_kt, heading_deg, vertical_rate_fpm, latitude, longitude, rssi_db, on_ground, emergency, wake_vortex, pressure_setting_mbar, selected_heading_deg) FROM STDIN (FORMAT binary)</td><td>382.752</td><td>0.0011523847032685096</td><td>833</td><td>0.000</td></tr><tr><td>COPY adsb_message (icao24, timestamp, callsign, altitude_ft, speed_kt, heading_deg, vertical_rate_fpm, latitude, longitude, rssi_db, on_ground, emergency, wake_vortex, pressure_setting_mbar, selected_heading_deg) FROM STDIN (FORMAT binary)</td><td>311.324</td><td>9.373307548520495E-4</td><td>630</td><td>0.000</td></tr><tr><td>SELECT abalance FROM pgbench_accounts WHERE aid = $1</td><td>265.866</td><td>8.00466901411818E-4</td><td>32000</td><td>0.000</td></tr><tr><td>alter table pgbench_accounts add primary key (aid)</td><td>161.279</td><td>4.8557520983859477E-4</td><td>1</td><td>0.000</td></tr><tr><td>alter table pgbench_accounts add constraint pgbench_accounts_bid_fkey foreign key (bid) references pgbench_branches</td><td>88.846</td><td>2.674967818775456E-4</td><td>1</td><td>0.000</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -959,9 +863,9 @@ example row
 ```clojure
 {:query
  "UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2",
- :exec_time_ms 43769.645M,
- :prop_exec_time 0.6941451279942044,
- :calls 128000,
+ :exec_time_ms 49473.195M,
+ :prop_exec_time 0.6909331621733533,
+ :calls 32000,
  :sync_io_time_ms 0.000M}
 
 ```
@@ -982,7 +886,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>extension</th><th>default_version</th><th>installed_version</th><th>description</th></tr></thead><tbody><tr><td>plpgsql</td><td>1.0</td><td>1.0</td><td>PL/pgSQL procedural language</td></tr><tr><td>pg_stat_statements</td><td>1.10</td><td>1.10</td><td>track planning and execution statistics of all SQL statements executed</td></tr><tr><td>insert_username</td><td>1.0</td><td></td><td>functions for tracking who changed a table</td></tr><tr><td>xml2</td><td>1.1</td><td></td><td>XPath querying and XSLT</td></tr><tr><td>intarray</td><td>1.5</td><td></td><td>functions, operators, and index support for 1-D arrays of integers</td></tr><tr><td>uuid-ossp</td><td>1.1</td><td></td><td>generate universally unique identifiers (UUIDs)</td></tr><tr><td>dict_int</td><td>1.0</td><td></td><td>text search dictionary template for integers</td></tr><tr><td>old_snapshot</td><td>1.0</td><td></td><td>utilities in support of old_snapshot_threshold</td></tr><tr><td>lo</td><td>1.1</td><td></td><td>Large Object maintenance</td></tr><tr><td>unaccent</td><td>1.1</td><td></td><td>text search dictionary that removes accents</td></tr><tr><td>pageinspect</td><td>1.12</td><td></td><td>inspect the contents of database pages at a low level</td></tr><tr><td>bloom</td><td>1.0</td><td></td><td>bloom access method - signature file based index</td></tr><tr><td>pg_walinspect</td><td>1.1</td><td></td><td>functions to inspect contents of PostgreSQL Write-Ahead Log</td></tr><tr><td>adminpack</td><td>2.1</td><td></td><td>administrative functions for PostgreSQL</td></tr><tr><td>cube</td><td>1.5</td><td></td><td>data type for multidimensional cubes</td></tr><tr><td>tcn</td><td>1.0</td><td></td><td>Triggered change notifications</td></tr><tr><td>pg_trgm</td><td>1.6</td><td></td><td>text similarity measurement and index searching based on trigrams</td></tr><tr><td>tsm_system_time</td><td>1.0</td><td></td><td>TABLESAMPLE method which accepts time in milliseconds as a limit</td></tr><tr><td>hstore</td><td>1.8</td><td></td><td>data type for storing sets of (key, value) pairs</td></tr><tr><td>btree_gist</td><td>1.7</td><td></td><td>support for indexing common datatypes in GiST</td></tr><tr><td>dict_xsyn</td><td>1.0</td><td></td><td>text search dictionary template for extended synonym processing</td></tr><tr><td>tablefunc</td><td>1.0</td><td></td><td>functions that manipulate whole tables, including crosstab</td></tr><tr><td>pgrowlocks</td><td>1.2</td><td></td><td>show row-level locking information</td></tr><tr><td>amcheck</td><td>1.3</td><td></td><td>functions for verifying relation integrity</td></tr><tr><td>isn</td><td>1.2</td><td></td><td>data types for international product numbering standards</td></tr><tr><td>btree_gin</td><td>1.3</td><td></td><td>support for indexing common datatypes in GIN</td></tr><tr><td>autoinc</td><td>1.0</td><td></td><td>functions for autoincrementing fields</td></tr><tr><td>pg_prewarm</td><td>1.2</td><td></td><td>prewarm relation data</td></tr><tr><td>fuzzystrmatch</td><td>1.2</td><td></td><td>determine similarities and distance between strings</td></tr><tr><td>citext</td><td>1.6</td><td></td><td>data type for case-insensitive character strings</td></tr><tr><td>postgres_fdw</td><td>1.1</td><td></td><td>foreign-data wrapper for remote PostgreSQL servers</td></tr><tr><td>pgstattuple</td><td>1.5</td><td></td><td>show tuple-level statistics</td></tr><tr><td>dblink</td><td>1.2</td><td></td><td>connect to other PostgreSQL databases from within a database</td></tr><tr><td>file_fdw</td><td>1.0</td><td></td><td>foreign-data wrapper for flat file access</td></tr><tr><td>moddatetime</td><td>1.0</td><td></td><td>functions for tracking last modification time</td></tr><tr><td>ltree</td><td>1.2</td><td></td><td>data type for hierarchical tree-like structures</td></tr><tr><td>pg_freespacemap</td><td>1.2</td><td></td><td>examine the free space map (FSM)</td></tr><tr><td>pg_visibility</td><td>1.2</td><td></td><td>examine the visibility map (VM) and page-level visibility info</td></tr><tr><td>pg_surgery</td><td>1.0</td><td></td><td>extension to perform surgery on a damaged relation</td></tr><tr><td>pgcrypto</td><td>1.3</td><td></td><td>cryptographic functions</td></tr><tr><td>sslinfo</td><td>1.2</td><td></td><td>information about SSL certificates</td></tr><tr><td>earthdistance</td><td>1.1</td><td></td><td>calculate great-circle distances on the surface of the Earth</td></tr><tr><td>refint</td><td>1.0</td><td></td><td>functions for implementing referential integrity (obsolete)</td></tr><tr><td>tsm_system_rows</td><td>1.0</td><td></td><td>TABLESAMPLE method which accepts number of rows as a limit</td></tr><tr><td>intagg</td><td>1.1</td><td></td><td>integer aggregator and enumerator (obsolete)</td></tr><tr><td>postgis_sfcgal-3</td><td>3.4.3</td><td></td><td>PostGIS SFCGAL functions</td></tr><tr><td>address_standardizer_data_us</td><td>3.4.3</td><td></td><td>Address Standardizer US dataset example</td></tr><tr><td>postgis_tiger_geocoder-3</td><td>3.4.3</td><td></td><td>PostGIS tiger geocoder and reverse geocoder</td></tr><tr><td>postgis_raster</td><td>3.4.3</td><td></td><td>PostGIS raster types and functions</td></tr><tr><td>address_standardizer-3</td><td>3.4.3</td><td></td><td>Used to parse an address into constituent elements. Generally used to support geocoding address normalization step.</td></tr><tr><td>postgis_sfcgal</td><td>3.4.3</td><td></td><td>PostGIS SFCGAL functions</td></tr><tr><td>postgis</td><td>3.4.3</td><td></td><td>PostGIS geometry and geography spatial types and functions</td></tr><tr><td>postgis_topology</td><td>3.4.3</td><td></td><td>PostGIS topology spatial types and functions</td></tr><tr><td>address_standardizer_data_us-3</td><td>3.4.3</td><td></td><td>Address Standardizer US dataset example</td></tr><tr><td>postgis_tiger_geocoder</td><td>3.4.3</td><td></td><td>PostGIS tiger geocoder and reverse geocoder</td></tr><tr><td>postgis-3</td><td>3.4.3</td><td></td><td>PostGIS geometry and geography spatial types and functions</td></tr><tr><td>address_standardizer</td><td>3.4.3</td><td></td><td>Used to parse an address into constituent elements. Generally used to support geocoding address normalization step.</td></tr><tr><td>postgis_raster-3</td><td>3.4.3</td><td></td><td>PostGIS raster types and functions</td></tr><tr><td>pg_buffercache</td><td>1.4</td><td></td><td>examine the shared buffer cache</td></tr><tr><td>postgis_topology-3</td><td>3.4.3</td><td></td><td>PostGIS topology spatial types and functions</td></tr><tr><td>seg</td><td>1.4</td><td></td><td>data type for representing line segments or floating-point intervals</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":true,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>extension</th><th>default_version</th><th>installed_version</th><th>description</th></tr></thead><tbody><tr><td>plpgsql</td><td>1.0</td><td>1.0</td><td>PL/pgSQL procedural language</td></tr><tr><td>pg_stat_statements</td><td>1.10</td><td>1.10</td><td>track planning and execution statistics of all SQL statements executed</td></tr><tr><td>insert_username</td><td>1.0</td><td></td><td>functions for tracking who changed a table</td></tr><tr><td>xml2</td><td>1.1</td><td></td><td>XPath querying and XSLT</td></tr><tr><td>intarray</td><td>1.5</td><td></td><td>functions, operators, and index support for 1-D arrays of integers</td></tr><tr><td>uuid-ossp</td><td>1.1</td><td></td><td>generate universally unique identifiers (UUIDs)</td></tr><tr><td>dict_int</td><td>1.0</td><td></td><td>text search dictionary template for integers</td></tr><tr><td>old_snapshot</td><td>1.0</td><td></td><td>utilities in support of old_snapshot_threshold</td></tr><tr><td>lo</td><td>1.1</td><td></td><td>Large Object maintenance</td></tr><tr><td>unaccent</td><td>1.1</td><td></td><td>text search dictionary that removes accents</td></tr><tr><td>pageinspect</td><td>1.12</td><td></td><td>inspect the contents of database pages at a low level</td></tr><tr><td>bloom</td><td>1.0</td><td></td><td>bloom access method - signature file based index</td></tr><tr><td>pg_walinspect</td><td>1.1</td><td></td><td>functions to inspect contents of PostgreSQL Write-Ahead Log</td></tr><tr><td>adminpack</td><td>2.1</td><td></td><td>administrative functions for PostgreSQL</td></tr><tr><td>cube</td><td>1.5</td><td></td><td>data type for multidimensional cubes</td></tr><tr><td>tcn</td><td>1.0</td><td></td><td>Triggered change notifications</td></tr><tr><td>pg_trgm</td><td>1.6</td><td></td><td>text similarity measurement and index searching based on trigrams</td></tr><tr><td>tsm_system_time</td><td>1.0</td><td></td><td>TABLESAMPLE method which accepts time in milliseconds as a limit</td></tr><tr><td>hstore</td><td>1.8</td><td></td><td>data type for storing sets of (key, value) pairs</td></tr><tr><td>btree_gist</td><td>1.7</td><td></td><td>support for indexing common datatypes in GiST</td></tr><tr><td>dict_xsyn</td><td>1.0</td><td></td><td>text search dictionary template for extended synonym processing</td></tr><tr><td>tablefunc</td><td>1.0</td><td></td><td>functions that manipulate whole tables, including crosstab</td></tr><tr><td>pgrowlocks</td><td>1.2</td><td></td><td>show row-level locking information</td></tr><tr><td>amcheck</td><td>1.3</td><td></td><td>functions for verifying relation integrity</td></tr><tr><td>isn</td><td>1.2</td><td></td><td>data types for international product numbering standards</td></tr><tr><td>btree_gin</td><td>1.3</td><td></td><td>support for indexing common datatypes in GIN</td></tr><tr><td>autoinc</td><td>1.0</td><td></td><td>functions for autoincrementing fields</td></tr><tr><td>pg_prewarm</td><td>1.2</td><td></td><td>prewarm relation data</td></tr><tr><td>fuzzystrmatch</td><td>1.2</td><td></td><td>determine similarities and distance between strings</td></tr><tr><td>citext</td><td>1.6</td><td></td><td>data type for case-insensitive character strings</td></tr><tr><td>postgres_fdw</td><td>1.1</td><td></td><td>foreign-data wrapper for remote PostgreSQL servers</td></tr><tr><td>pgstattuple</td><td>1.5</td><td></td><td>show tuple-level statistics</td></tr><tr><td>dblink</td><td>1.2</td><td></td><td>connect to other PostgreSQL databases from within a database</td></tr><tr><td>file_fdw</td><td>1.0</td><td></td><td>foreign-data wrapper for flat file access</td></tr><tr><td>moddatetime</td><td>1.0</td><td></td><td>functions for tracking last modification time</td></tr><tr><td>ltree</td><td>1.2</td><td></td><td>data type for hierarchical tree-like structures</td></tr><tr><td>pg_freespacemap</td><td>1.2</td><td></td><td>examine the free space map (FSM)</td></tr><tr><td>pg_visibility</td><td>1.2</td><td></td><td>examine the visibility map (VM) and page-level visibility info</td></tr><tr><td>pg_surgery</td><td>1.0</td><td></td><td>extension to perform surgery on a damaged relation</td></tr><tr><td>pgcrypto</td><td>1.3</td><td></td><td>cryptographic functions</td></tr><tr><td>sslinfo</td><td>1.2</td><td></td><td>information about SSL certificates</td></tr><tr><td>earthdistance</td><td>1.2</td><td></td><td>calculate great-circle distances on the surface of the Earth</td></tr><tr><td>refint</td><td>1.0</td><td></td><td>functions for implementing referential integrity (obsolete)</td></tr><tr><td>tsm_system_rows</td><td>1.0</td><td></td><td>TABLESAMPLE method which accepts number of rows as a limit</td></tr><tr><td>pg_buffercache</td><td>1.4</td><td></td><td>examine the shared buffer cache</td></tr><tr><td>intagg</td><td>1.1</td><td></td><td>integer aggregator and enumerator (obsolete)</td></tr><tr><td>seg</td><td>1.4</td><td></td><td>data type for representing line segments or floating-point intervals</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":true,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -1018,7 +922,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>159342592</td></tr><tr><td>public</td><td>pgbench_history</td><td>1884160</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>245760</td></tr><tr><td>public</td><td>pgbench_branches</td><td>180224</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>158932992</td></tr><tr><td>public</td><td>pgbench_history</td><td>1875968</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>237568</td></tr><tr><td>public</td><td>pgbench_branches</td><td>212992</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -1031,7 +935,7 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:schema "public", :table "pgbench_accounts", :size 159342592}
+{:schema "public", :table "pgbench_accounts", :size 158932992}
 
 ```
 :::
@@ -1051,7 +955,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>type</th><th>schema</th><th>object_name</th><th>bloat</th><th>waste</th></tr></thead><tbody><tr><td>table</td><td>public</td><td>pgbench_accounts</td><td>1.1</td><td>8470528</td></tr><tr><td>table</td><td>public</td><td>pgbench_tellers</td><td>24.0</td><td>188416</td></tr><tr><td>table</td><td>public</td><td>pgbench_branches</td><td>16.0</td><td>122880</td></tr><tr><td>index</td><td>public</td><td>pgbench_branches::pgbench_branches_pkey</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>public</td><td>pgbench_tellers::pgbench_tellers_pkey</td><td>2.0</td><td>8192</td></tr><tr><td>table</td><td>public</td><td>pgbench_history</td><td>0.8</td><td>0</td></tr><tr><td>index</td><td>public</td><td>pgbench_accounts::pgbench_accounts_pkey</td><td>0.2</td><td>0</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>type</th><th>schema</th><th>object_name</th><th>bloat</th><th>waste</th></tr></thead><tbody><tr><td>table</td><td>public</td><td>pgbench_accounts</td><td>1.0</td><td>5980160</td></tr><tr><td>index</td><td>public</td><td>pgbench_branches::pgbench_branches_pkey</td><td>2.0</td><td>8192</td></tr><tr><td>index</td><td>public</td><td>pgbench_tellers::pgbench_tellers_pkey</td><td>2.0</td><td>8192</td></tr><tr><td>table</td><td>public</td><td>pgbench_branches</td><td>1.0</td><td>0</td></tr><tr><td>table</td><td>public</td><td>pgbench_tellers</td><td>1.0</td><td>0</td></tr><tr><td>index</td><td>public</td><td>pgbench_accounts::pgbench_accounts_pkey</td><td>0.2</td><td>0</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -1067,8 +971,8 @@ example row
 {:type "table",
  :schema "public",
  :object_name "pgbench_accounts",
- :bloat 1.1M,
- :waste 8470528}
+ :bloat 1.0M,
+ :waste 5980160}
 
 ```
 :::
@@ -1092,16 +996,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>query</th><th>exec_time_ms</th><th>exec_time_ratio</th><th>calls</th><th>sync_io_time_ms</th></tr></thead><tbody><tr><td>begin</td><td>50.106</td><td>3.2695064695317874E-5</td><td>128001</td><td>0.000</td></tr><tr><td>commit</td><td>50.196</td><td>3.275385179117718E-5</td><td>128001</td><td>0.000</td></tr><tr><td>UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2</td><td>28899.847</td><td>0.2929174436271342</td><td>128000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2</td><td>4733.645</td><td>0.003088811691034517</td><td>128000</td><td>0.000</td></tr><tr><td>SELECT abalance FROM pgbench_accounts WHERE aid = $1</td><td>1068.892</td><td>6.974767341007996E-4</td><td>128000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2</td><td>43769.645</td><td>0.6941340862903255</td><td>128000</td><td>0.000</td></tr><tr><td>INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)</td><td>9053.035</td><td>0.005907313061856393</td><td>128000</td><td>0.000</td></tr><tr><td>SET application_name = 'PostgreSQL JDBC Driver'</td><td>5.169</td><td>3.3728975533392408E-6</td><td>794</td><td>0.000</td></tr><tr><td>SELECT
-    current_setting($1)::int AS version_num</td><td>0.412</td><td>2.685321090940323E-7</td><td>54</td><td>0.000</td></tr><tr><td>SELECT
-    name AS setting,
-    setting AS value,
-    unit,
-    short_desc
-FROM
-    pg_settings
-WHERE
-    name IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)</td><td>21.538</td><td>1.4054256821248815E-5</td><td>33</td><td>0.000</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>query</th><th>exec_time_ms</th><th>exec_time_ratio</th><th>calls</th><th>sync_io_time_ms</th></tr></thead><tbody><tr><td>commit</td><td>11.697</td><td>3.521543540271427E-5</td><td>32001</td><td>0.000</td></tr><tr><td>begin</td><td>11.543</td><td>3.475103532381449E-5</td><td>32001</td><td>0.000</td></tr><tr><td>SELECT abalance FROM pgbench_accounts WHERE aid = $1</td><td>265.866</td><td>8.004432245336049E-4</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2</td><td>49473.195</td><td>0.6908743582027831</td><td>32000</td><td>0.000</td></tr><tr><td>INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)</td><td>2424.626</td><td>0.007299815714544254</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2</td><td>36610.332</td><td>0.2908644776285117</td><td>32000</td><td>0.000</td></tr><tr><td>UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2</td><td>1168.237</td><td>0.003517207205663694</td><td>32000</td><td>0.000</td></tr><tr><td>START TRANSACTION</td><td>2.661</td><td>8.012453375541591E-6</td><td>1466</td><td>0.000</td></tr><tr><td>COMMIT</td><td>0.746</td><td>2.2464589852287076E-6</td><td>1464</td><td>0.000</td></tr><tr><td>COPY adsb_message (icao24, callsign, altitude_ft, speed_kt, heading_deg, vertical_rate_fpm, latitude, longitude, rssi_db, on_ground, emergency, wake_vortex, pressure_setting_mbar, selected_heading_deg) FROM STDIN (FORMAT binary)</td><td>382.752</td><td>0.0011523506170717842</td><td>833</td><td>0.000</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -1114,10 +1009,10 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:query "begin",
- :exec_time_ms 50.106M,
- :exec_time_ratio 3.269534763848449E-5,
- :calls 128001,
+{:query "commit",
+ :exec_time_ms 11.697M,
+ :exec_time_ratio 3.521675353629051E-5,
+ :calls 32001,
  :sync_io_time_ms 0.000M}
 
 ```
@@ -1138,7 +1033,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>136855552</td></tr><tr><td>public</td><td>pgbench_history</td><td>1884160</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>229376</td></tr><tr><td>public</td><td>pgbench_branches</td><td>163840</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>size</th></tr></thead><tbody><tr><td>public</td><td>pgbench_accounts</td><td>136445952</td></tr><tr><td>public</td><td>pgbench_history</td><td>1875968</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>221184</td></tr><tr><td>public</td><td>pgbench_branches</td><td>196608</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -1151,7 +1046,7 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:schema "public", :table "pgbench_accounts", :size 136855552}
+{:schema "public", :table "pgbench_accounts", :size 136445952}
 
 ```
 :::
@@ -1206,7 +1101,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>buffer_hits</th><th>block_reads</th><th>total_read</th><th>ratio</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>1831272</td><td>0</td><td>1831272</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>1054618</td><td>0</td><td>1054618</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_history</td><td>518674</td><td>0</td><td>518674</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>1357051</td><td>28776</td><td>1385827</td><td>0.9792355034214227</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>buffer_hits</th><th>block_reads</th><th>total_read</th><th>ratio</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>648493</td><td>0</td><td>648493</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>234270</td><td>0</td><td>234270</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_history</td><td>128629</td><td>0</td><td>128629</td><td>1.0</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>336082</td><td>28776</td><td>364858</td><td>0.9211309605380723</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -1221,9 +1116,9 @@ example row
 ```clojure
 {:schema "public",
  :table "pgbench_branches",
- :buffer_hits 1831272,
+ :buffer_hits 648493,
  :block_reads 0,
- :total_read 1831272,
+ :total_read 648493,
  :ratio 1.0}
 
 ```
@@ -1277,7 +1172,7 @@ example row
 ::: {.clay-table}
 
 ```{=html}
-<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>count</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>19076</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>16477</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>8</td></tr><tr><td>public</td><td>pgbench_history</td><td>7</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
+<table class="table table-hover table-responsive clay-table"><thead><tr><th>schema</th><th>table</th><th>count</th></tr></thead><tbody><tr><td>public</td><td>pgbench_branches</td><td>32992</td></tr><tr><td>public</td><td>pgbench_tellers</td><td>164</td></tr><tr><td>public</td><td>pgbench_accounts</td><td>4</td></tr><tr><td>public</td><td>pgbench_history</td><td>4</td></tr></tbody><script>new DataTable(document.currentScript.parentElement, {"paging":false,"scrollY":false,"sPaginationType":"full_numbers","order":[],"scrollX":false,"pageLength":12});</script></table>
 ```
 
 :::
@@ -1290,7 +1185,7 @@ example row
 
 ::: {.printedClojure}
 ```clojure
-{:schema "public", :table "pgbench_branches", :count 19076}
+{:schema "public", :table "pgbench_branches", :count 32992}
 
 ```
 :::
@@ -1359,30 +1254,29 @@ Query and and print all default diagnostics
 ::: {.printedClojure}
 ```clojure
 ("✓  Passed :bloat public.pgbench_accounts"
- "! Warning :bloat public.pgbench_tellers Bloated tables\n{:type \"table\", :schema \"public\", :object_name \"pgbench_tellers\", :bloat 24.0M, :waste 188416}"
- "! Warning :bloat public.pgbench_branches Bloated tables\n{:type \"table\", :schema \"public\", :object_name \"pgbench_branches\", :bloat 16.0M, :waste 122880}"
  "✓  Passed :bloat public.pgbench_branches::pgbench_branches_pkey"
  "✓  Passed :bloat public.pgbench_tellers::pgbench_tellers_pkey"
- "✓  Passed :bloat public.pgbench_history"
+ "✓  Passed :bloat public.pgbench_branches"
+ "✓  Passed :bloat public.pgbench_tellers"
  "✓  Passed :bloat public.pgbench_accounts::pgbench_accounts_pkey"
  "✓  Passed :index-cache-hit public.pgbench_history"
  "✓  Passed :index-cache-hit public.pgbench_tellers"
  "✓  Passed :index-cache-hit public.pgbench_branches"
  "✓  Passed :index-cache-hit public.pgbench_accounts"
- "! Warning :outliers UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2 Detected slow query\n{:query \"UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2\", :exec_time_ms 43769.645M, :prop_exec_time 0.6941311138000865, :calls 128000, :sync_io_time_ms 0.000M}"
+ "! Warning :outliers UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2 Detected slow query\n{:query \"UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2\", :exec_time_ms 49473.195M, :prop_exec_time 0.6908607150115953, :calls 32000, :sync_io_time_ms 0.000M}"
  "✓  Passed :outliers UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2"
  "✓  Passed :outliers INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)"
  "✓  Passed :outliers UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2"
- "✓  Passed :outliers SELECT abalance FROM pgbench_accounts WHERE aid = $1"
- "✓  Passed :outliers WITH RECURSIVE Z ( IX, IY, CX, CY, X, Y, I ) AS ( SELECT IX, IY, X::float, Y::float, X::float, Y::float, $1"
- "✓  Passed :outliers CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder"
  "✓  Passed :outliers copy pgbench_accounts from stdin with (freeze on)"
- "✓  Passed :outliers CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder"
- "✓  Passed :outliers SELECT n.nspname::text AS schema, p.proname::text AS function, pg_get_function_result(p.oid)::text AS result_data_types, pg_get_function_arguments(p.oid)::text AS argument_data_types, pg_get_u"
+ "✓  Passed :outliers COPY adsb_message (icao24, callsign, altitude_ft, speed_kt, heading_deg, vertical_rate_fpm, latitude, longitude, rssi_db, on_ground, emergency, wake_vortex, pressure_setting_mbar, selected_heading_deg"
+ "✓  Passed :outliers COPY adsb_message (icao24, timestamp, callsign, altitude_ft, speed_kt, heading_deg, vertical_rate_fpm, latitude, longitude, rssi_db, on_ground, emergency, wake_vortex, pressure_setting_mbar, selected_"
+ "✓  Passed :outliers SELECT abalance FROM pgbench_accounts WHERE aid = $1"
+ "✓  Passed :outliers alter table pgbench_accounts add primary key (aid)"
+ "✓  Passed :outliers alter table pgbench_accounts add constraint pgbench_accounts_bid_fkey foreign key (bid) references pgbench_branches"
  "✓  Passed :table-cache-hit public.pgbench_branches"
  "✓  Passed :table-cache-hit public.pgbench_tellers"
  "✓  Passed :table-cache-hit public.pgbench_history"
- "! Warning :table-cache-hit public.pgbench_accounts Table sees too much block IO relative to buffer cache hit\n{:schema \"public\", :table \"pgbench_accounts\", :buffer_hits 1357051, :block_reads 28776, :total_read 1385827, :ratio 0.9792355034214227}")
+ "! Warning :table-cache-hit public.pgbench_accounts Table sees too much block IO relative to buffer cache hit\n{:schema \"public\", :table \"pgbench_accounts\", :buffer_hits 336082, :block_reads 28776, :total_read 364858, :ratio 0.9211309605380723}")
 
 ```
 :::
@@ -1402,10 +1296,8 @@ Or just the warnings
 
 ::: {.printedClojure}
 ```clojure
-("! Warning :bloat public.pgbench_tellers Bloated tables\n{:type \"table\", :schema \"public\", :object_name \"pgbench_tellers\", :bloat 24.0M, :waste 188416}"
- "! Warning :bloat public.pgbench_branches Bloated tables\n{:type \"table\", :schema \"public\", :object_name \"pgbench_branches\", :bloat 16.0M, :waste 122880}"
- "! Warning :outliers UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2 Detected slow query\n{:query \"UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2\", :exec_time_ms 43769.645M, :prop_exec_time 0.6941230404727947, :calls 128000, :sync_io_time_ms 0.000M}"
- "! Warning :table-cache-hit public.pgbench_accounts Table sees too much block IO relative to buffer cache hit\n{:schema \"public\", :table \"pgbench_accounts\", :buffer_hits 1357051, :block_reads 28776, :total_read 1385827, :ratio 0.9792355034214227}")
+("! Warning :outliers UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2 Detected slow query\n{:query \"UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2\", :exec_time_ms 49473.195M, :prop_exec_time 0.6908266095854058, :calls 32000, :sync_io_time_ms 0.000M}"
+ "! Warning :table-cache-hit public.pgbench_accounts Table sees too much block IO relative to buffer cache hit\n{:schema \"public\", :table \"pgbench_accounts\", :buffer_hits 336082, :block_reads 28776, :total_read 364858, :ratio 0.9211309605380723}")
 
 ```
 :::
@@ -1439,7 +1331,7 @@ Create your own diagnostics
 
 ::: {.printedClojure}
 ```clojure
-("! Warning :table-cache-hit pgbench_accounts The cache hit ratio is not as insanely high as I'd like.\n{:schema \"public\", :table \"pgbench_accounts\", :buffer_hits 1357051, :block_reads 28776, :total_read 1385827, :ratio 0.9792355034214227}")
+("! Warning :table-cache-hit pgbench_accounts The cache hit ratio is not as insanely high as I'd like.\n{:schema \"public\", :table \"pgbench_accounts\", :buffer_hits 336082, :block_reads 28776, :total_read 364858, :ratio 0.9211309605380723}")
 
 ```
 :::
