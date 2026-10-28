@@ -6,11 +6,10 @@ Pre 1.0 releases will have breaking changes.
 
 ## [Unreleased]
 * Add pghero diagnostics (10 queries) in `resources/sql/pghero.sql`
-* Add PostgreSQL-native catalog diagnostics (11 queries) in `resources/sql/postgres_native.sql`
-* Separate SQL files per known source, with the source license inlined
+* Add PostgreSQL-native catalog diagnostics (12 queries) in `resources/sql/postgres_native.sql`
 * `bgwriter-stats` dispatches on PG17+ (`pg_stat_checkpointer`)
 * `wal-stats` targets the stable `pg_stat_wal` columns (PG14+)
-* `read-stats` now returns 42 diagnostic keys
+* `read-stats` returns 43 diagnostic keys
 
 ## [0.2.22] - 2026-10-25
 * New MAJOR.MINOR.PR-NUMBER versioning. start 0.2.x

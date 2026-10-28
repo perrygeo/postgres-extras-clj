@@ -135,6 +135,7 @@ Read-only diagnostics over PostgreSQL system catalogs.
 | `idle-in-transaction` | Sessions idle in transaction (vacuum blockers) |
 | `replication-stats` | Standby connections and per-standby lag from the primary |
 | `roles` | Roles and their privilege/expiry attributes |
+| `sequence-origin` | How each sequence was created: serial, identity, or explicit |
 | `tables-without-primary-key` | Tables without a primary key |
 | `unindexed-foreign-keys` | Foreign keys without a leading index on the referencing columns |
 | `unlogged-tables` | Unlogged tables (data lost on crash) |

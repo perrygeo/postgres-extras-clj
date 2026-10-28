@@ -324,3 +324,41 @@ WHERE
 ORDER BY
     n.nspname,
     c.relname;
+
+-- :name sequence-origin
+-- :command :query
+-- :result :many
+-- :doc How each sequence was created: serial, identity, or explicit CREATE SEQUENCE
+/* HUG_PSQL_EXTRAS: How each sequence was created: serial, identity, or explicit CREATE SEQUENCE */
+SELECT
+    n.nspname AS schema,
+    c.relname AS sequence,
+    tc.relname AS table,
+    a.attname AS column,
+    CASE WHEN a.attidentity = 'a' THEN
+        'identity always'
+    WHEN a.attidentity = 'd' THEN
+        'identity by default'
+    WHEN d.deptype = 'a' THEN
+        'serial'
+    ELSE
+        'explicit'
+    END AS origin
+FROM
+    pg_class c
+    INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_depend d ON d.objid = c.oid
+        AND d.classid = 'pg_class'::regclass
+        AND d.refclassid = 'pg_class'::regclass
+        AND d.deptype IN ('a', 'i')
+    LEFT JOIN pg_class tc ON tc.oid = d.refobjid
+    LEFT JOIN pg_attribute a ON a.attrelid = d.refobjid
+        AND a.attnum = d.refobjsubid
+WHERE
+    c.relkind = 'S'
+    AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND n.nspname !~ '^pg_toast'
+    AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+ORDER BY
+    n.nspname,
+    c.relname;

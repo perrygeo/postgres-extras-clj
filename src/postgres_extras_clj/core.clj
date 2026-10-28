@@ -98,6 +98,7 @@
          idle-in-transaction
          replication-stats
          roles
+         sequence-origin
          tables-without-primary-key
          unindexed-foreign-keys
          unlogged-tables
@@ -182,6 +183,7 @@
                :replication-stats          (replication-stats db)
                :roles                      (roles db)
                :seq-scans                  (seq-scans db)
+               :sequence-origin            (sequence-origin db)
                :sequences                  (sequences db)
                :table-cache-hit            (table-cache-hit db)
                :table-indexes-size         (table-indexes-size db)
