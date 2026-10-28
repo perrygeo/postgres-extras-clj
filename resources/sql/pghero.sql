@@ -95,7 +95,7 @@ SELECT
     data_type::text AS data_type,
     start_value,
     increment_by,
-    cycle,
+    CYCLE,
     last_value,
     max_value,
     CASE WHEN max_value IS NULL THEN
@@ -112,7 +112,7 @@ WHERE
 ORDER BY
     used_ratio DESC NULLS LAST,
     schema,
-    sequence;
+    SEQUENCE;
 
 -- :name replication-lag
 -- :command :query
@@ -121,7 +121,7 @@ ORDER BY
 /* HUG_PSQL_EXTRAS: Standby replication lag in seconds */
 SELECT
     CASE WHEN NOT pg_is_in_recovery()
-        OR pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN
+        OR pg_last_wal_receive_lsn () = pg_last_wal_replay_lsn () THEN
         0
     ELSE
         EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())
@@ -135,14 +135,14 @@ SELECT
 SELECT
     slot_name,
     slot_type,
-    database,
+    DATABASE,
     active,
     wal_status,
     restart_lsn::text AS restart_lsn,
     confirmed_flush_lsn::text AS confirmed_flush_lsn,
-    pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) AS restart_lag_bytes,
+    pg_wal_lsn_diff (pg_current_wal_lsn (), restart_lsn) AS restart_lag_bytes,
     CASE WHEN slot_type = 'logical' THEN
-        pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)
+        pg_wal_lsn_diff (pg_current_wal_lsn (), confirmed_flush_lsn)
     ELSE
         NULL
     END AS lag_bytes

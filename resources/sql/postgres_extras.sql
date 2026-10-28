@@ -106,25 +106,25 @@ FROM (
         ma,
         bs,
         SUM((1 - null_frac) * avg_width) AS datawidth,
-    MAX(null_frac) AS maxfracsum,
-    hdr + (
-        SELECT
-            1 + count(*) / 8
+        MAX(null_frac) AS maxfracsum,
+        hdr + (
+            SELECT
+                1 + count(*) / 8
+            FROM
+                pg_stats s2
+            WHERE
+                null_frac <> 0
+                AND s2.schemaname = s.schemaname
+                AND s2.tablename = s.tablename) AS nullhdr
         FROM
-            pg_stats s2
-        WHERE
-            null_frac <> 0
-            AND s2.schemaname = s.schemaname
-            AND s2.tablename = s.tablename) AS nullhdr
-    FROM
-        pg_stats s,
-        constants
-    GROUP BY
-        1,
-        2,
-        3,
-        4,
-        5) AS foo
+            pg_stats s,
+            constants
+        GROUP BY
+            1,
+            2,
+            3,
+            4,
+            5) AS foo
 ),
 table_bloat AS (
     SELECT
@@ -521,31 +521,32 @@ WITH RECURSIVE Z (
             i
         FROM
             generate_series(0, 101) AS i) AS xgen (x,
-        ix),
-    (
+            ix),
+        (
+            SELECT
+                -1.5 + 0.031 * i,
+                i
+            FROM
+                generate_series(0, 101) AS i) AS ygen (y,
+                iy)
+        UNION ALL
         SELECT
-            -1.5 + 0.031 * i,
-            i
+            IX,
+            IY,
+            CX,
+            CY,
+            X * X - Y * Y + CX AS X,
+            Y * X * 2 + CY,
+            I + 1
         FROM
-            generate_series(0, 101) AS i) AS ygen (y,
-            iy)
-    UNION ALL
-    SELECT
-        IX,
-        IY,
-        CX,
-        CY,
-        X * X - Y * Y + CX AS X,
-        Y * X * 2 + CY,
-        I + 1
-    FROM
-        Z
-    WHERE
-        X * X + Y * Y < 16::float
-        AND I < 100
+            Z
+        WHERE
+            X * X + Y * Y < 16::float
+            AND I < 100
 )
 SELECT
-    array_to_string(array_agg(SUBSTRING(' .,,,-----++++%%%%@@@@#### ', LEAST (GREATEST (I, 1), 27), 1)), '') AS art
+    array_to_string(array_agg(SUBSTRING( ' .,,,-----++++%%%%@@@@#### '
+, LEAST (GREATEST (I, 1), 27), 1)), '') AS art
 FROM (
     SELECT
         IX,
@@ -609,6 +610,7 @@ SELECT
     query AS query,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
     (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) / calls AS ms_per_call,
     calls,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * (blk_read_time + blk_write_time))) AS sync_io_time_ms
 FROM
@@ -636,6 +638,7 @@ SELECT
     query AS query,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
     (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) / calls AS ms_per_call,
     calls,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * (shared_blk_read_time + shared_blk_write_time + local_blk_read_time + local_blk_write_time + temp_blk_read_time + temp_blk_write_time))) AS sync_io_time_ms
 FROM
@@ -873,4 +876,3 @@ SELECT
 -- :doc Numeric PostgreSQL server version (e.g. 170005 for 17.5)
 SELECT
     current_setting('server_version_num')::int AS version_num;
-
