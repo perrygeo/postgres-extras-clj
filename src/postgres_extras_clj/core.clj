@@ -76,11 +76,41 @@
          total-index-size
          total-table-size
          unused-indexes
-         vacuum-stats)
+         vacuum-stats
+
+         ;; pghero.sql
+         connection-states
+         invalid-constraints
+         invalid-indexes
+         maintenance
+         missing-indexes
+         replication-lag
+         replication-slots
+         sequences
+         transaction-id
+         unused-tables
+
+         ;; postgres_native.sql
+         autovacuum-disabled
+         bgwriter-stats-legacy
+         bgwriter-stats-pg17
+         database-stats
+         idle-in-transaction
+         replication-stats
+         roles
+         tables-without-primary-key
+         unindexed-foreign-keys
+         unlogged-tables
+         wal-archiver
+         wal-stats)
 
 (hugsql/def-db-fns "sql/postgres_extras.sql")
 
 (hugsql/def-db-fns "sql/data_dictionary.sql")
+
+(hugsql/def-db-fns "sql/pghero.sql")
+
+(hugsql/def-db-fns "sql/postgres_native.sql")
 
 (defn- pg-version-num
   "Numeric PostgreSQL server version, e.g. 170005 for 17.5."
@@ -88,26 +118,25 @@
   (:version_num (server-version-num db)))
 
 (defn calls
-  "Queries that have the highest frequency of execution.
-
-  Dispatches to a version-appropriate query because PostgreSQL 17 renamed
-  pg_stat_statements.blk_read_time/blk_write_time into shared/local/temp
-  read/write time columns."
+  "Queries that have the highest frequency of execution."
   [db {:keys [limit] :or {limit 10}}]
   (if (>= (pg-version-num db) 170000)
     (calls-pg17 db {:limit limit})
     (calls-legacy db {:limit limit})))
 
 (defn outliers
-  "Queries that have longest execution time in aggregate.
-
-  Dispatches to a version-appropriate query because PostgreSQL 17 renamed
-  pg_stat_statements.blk_read_time/blk_write_time into shared/local/temp
-  read/write time columns."
+  "Queries that have longest execution time in aggregate."
   [db {:keys [limit] :or {limit 10}}]
   (if (>= (pg-version-num db) 170000)
     (outliers-pg17 db {:limit limit})
     (outliers-legacy db {:limit limit})))
+
+(defn bgwriter-stats
+  "Checkpoint and background writer activity."
+  [db]
+  (if (>= (pg-version-num db) 170000)
+    (bgwriter-stats-pg17 db)
+    (bgwriter-stats-legacy db)))
 
 ;;;
 ;;; Stats
@@ -120,35 +149,52 @@
   The :outliers and :calls stats require enabling the pg-stat-statements extension,
   otherwise they will log a warning and return nil."
   [db & {:keys [limit] :or {limit 10}}]
-  (let [stats {:all-locks            (all-locks db)
-               :bloat                (bloat db)
-               :blocking             (blocking db)
-               :cache-hit            (cache-hit db)
-               :calls                (try
-                                       (calls db {:limit limit})
-                                       (catch PSQLException e (log/warn (format-psql-exc e))))
-               :connections          (connections db)
-               :db-settings          (db-settings db)
-               :duplicate-indexes    (duplicate-indexes db)
-               :extensions           (extensions db)
-               :index-cache-hit      (index-cache-hit db)
-               :index-size           (index-size db)
-               :index-usage          (index-usage db)
-               :locks                (locks db)
-               :long-running-queries (long-running-queries db)
-               :null-indexes         (null-indexes db)
-               :outliers             (try
-                                       (outliers db {:limit limit})
-                                       (catch PSQLException e (log/warn (format-psql-exc e))))
-               :records-rank         (records-rank db)
-               :seq-scans            (seq-scans db)
-               :table-cache-hit      (table-cache-hit db)
-               :table-indexes-size   (table-indexes-size db)
-               :table-size           (table-size db)
-               :total-index-size     (total-index-size db)
-               :total-table-size     (total-table-size db)
-               :unused-indexes       (unused-indexes db {:min_scans 50})
-               :vacuum-stats         (vacuum-stats db)}]
+  (let [stats {:all-locks                  (all-locks db)
+               :autovacuum-disabled        (autovacuum-disabled db)
+               :bloat                      (bloat db)
+               :blocking                   (blocking db)
+               :cache-hit                  (cache-hit db)
+               :calls                      (try
+                                             (calls db {:limit limit})
+                                             (catch PSQLException e (log/warn (format-psql-exc e))))
+               :connection-states          (connection-states db)
+               :connections                (connections db)
+               :database-stats             (database-stats db)
+               :db-settings                (db-settings db)
+               :duplicate-indexes          (duplicate-indexes db)
+               :extensions                 (extensions db)
+               :idle-in-transaction        (idle-in-transaction db)
+               :index-cache-hit            (index-cache-hit db)
+               :index-size                 (index-size db)
+               :index-usage                (index-usage db)
+               :invalid-constraints        (invalid-constraints db)
+               :invalid-indexes            (invalid-indexes db)
+               :locks                      (locks db)
+               :long-running-queries       (long-running-queries db)
+               :maintenance                (maintenance db)
+               :missing-indexes            (missing-indexes db)
+               :null-indexes               (null-indexes db)
+               :outliers                   (try
+                                             (outliers db {:limit limit})
+                                             (catch PSQLException e (log/warn (format-psql-exc e))))
+               :records-rank               (records-rank db)
+               :replication-slots          (replication-slots db)
+               :replication-stats          (replication-stats db)
+               :roles                      (roles db)
+               :seq-scans                  (seq-scans db)
+               :sequences                  (sequences db)
+               :table-cache-hit            (table-cache-hit db)
+               :table-indexes-size         (table-indexes-size db)
+               :table-size                 (table-size db)
+               :tables-without-primary-key (tables-without-primary-key db)
+               :total-index-size           (total-index-size db)
+               :total-table-size           (total-table-size db)
+               :transaction-id             (transaction-id db)
+               :unindexed-foreign-keys     (unindexed-foreign-keys db)
+               :unlogged-tables            (unlogged-tables db)
+               :unused-indexes             (unused-indexes db {:min_scans 50})
+               :unused-tables              (unused-tables db)
+               :vacuum-stats               (vacuum-stats db)}]
     (into {} (map (fn [[k v]]
                     [k (if (nil? v)
                          nil
@@ -227,9 +273,9 @@
                   {:diagnostic k
                    :pass       ret
                    :message    (if ret
-                                 (str "✓  Passed " k " " (tidy-report ident))
-                                 (str "! Warning " k " " (tidy-report ident)
-                                      " " onfalse "\n" %))
+                                 (str "Passed " k " " (tidy-report ident))
+                                 (str "Warning " k " " (tidy-report ident)
+                                      " " onfalse))
                    :data       (when (not ret) %)})
                (get stats k)))
         diagnostic-fns)))

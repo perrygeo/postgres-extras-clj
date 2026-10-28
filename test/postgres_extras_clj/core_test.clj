@@ -101,7 +101,7 @@
     ; this just confirms that queries are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 25 (count (keys (pgex/read-stats db))))))
+    (is (= 42 (count (keys (pgex/read-stats db))))))
 
   (testing
    "Even an 'empty' postgres database isn't really empty."
@@ -208,6 +208,186 @@
   (testing "sync io time is non-negative"
     (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/outliers db {:limit 10})))
     (is (every? #(>= (:sync_io_time_ms %) 0) (pgex/calls db {:limit 10})))))
+
+(deftest pghero-diagnostics
+  (testing "invalid-indexes returns a seq with string schema/index keys"
+    (let [rows (pgex/invalid-indexes db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:index %))
+                        (integer? (:index_size_bytes %)))
+                  rows))))
+
+  (testing "invalid-constraints returns a seq with string keys"
+    (let [rows (pgex/invalid-constraints db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:table %))
+                        (string? (:constraint %)))
+                  rows))))
+
+  (testing "sequences returns a seq with used_ratio numeric when present"
+    (let [rows (pgex/sequences db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:sequence %))
+                        (or (nil? (:used_ratio %))
+                            (number? (:used_ratio %))))
+                  rows))))
+
+  (testing "replication-lag returns a single numeric lag_seconds row"
+    (let [row (pgex/replication-lag db)]
+      (is (map? row))
+      (is (number? (:lag_seconds row)))))
+
+  (testing "replication-slots returns a seq (possibly empty on embedded)"
+    (is (vector? (pgex/replication-slots db))))
+
+  (testing "transaction-id returns non-empty per-database rows"
+    (let [rows (pgex/transaction-id db)]
+      (is (seq rows))
+      (is (every? #(and (string? (:datname %))
+                        (number? (:xid_age %))
+                        (number? (:wrap_risk_ratio %)))
+                  rows))))
+
+  (testing "maintenance returns a seq with string schema/table keys"
+    (let [rows (pgex/maintenance db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:table %)))
+                  rows))))
+
+  (testing "unused-tables returns a seq with size_bytes"
+    (let [rows (pgex/unused-tables db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:table %))
+                        (integer? (:size_bytes %)))
+                  rows))))
+
+  (testing "missing-indexes returns a seq (possibly empty on fresh db)"
+    (let [rows (pgex/missing-indexes db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:table %))
+                        (number? (:index_usage_ratio %)))
+                  rows))))
+
+  (testing "connection-states returns non-empty grouped rows"
+    (let [rows (pgex/connection-states db)]
+      (is (seq rows))
+      (is (every? #(integer? (:connections %)) rows)))))
+
+(deftest postgres-native-diagnostics
+  (testing "wal-stats returns a single row of WAL counters"
+    (let [row (pgex/wal-stats db)]
+      (is (map? row))
+      (is (integer? (:wal_records row)))
+      (is (number? (:wal_bytes row)))
+      (is (integer? (:wal_buffers_full row)))))
+
+  (testing "wal-archiver returns a single row with archive mode"
+    (let [row (pgex/wal-archiver db)]
+      (is (map? row))
+      (is (integer? (:archived_count row)))
+      (is (integer? (:failed_count row)))
+      (is (string? (:archive_mode row)))))
+
+  (testing "roles returns non-empty rows with privilege flags"
+    (let [rows (pgex/roles db)]
+      (is (seq rows))
+      (is (every? #(and (string? (:rolname %))
+                        (boolean? (:rolsuper %))
+                        (boolean? (:rolcanlogin %)))
+                  rows))))
+
+  (testing "database-stats returns non-empty rows with ratios"
+    (let [rows (pgex/database-stats db)]
+      (is (seq rows))
+      (is (every? #(and (string? (:datname %))
+                        (number? (:cache_hit_ratio %))
+                        (number? (:rollback_ratio %)))
+                  rows))))
+
+  (testing "replication-stats returns a seq (possibly empty on embedded)"
+    (is (vector? (pgex/replication-stats db))))
+
+  (testing "bgwriter-stats returns a single row of checkpoint counters"
+    (let [row (pgex/bgwriter-stats db)]
+      (is (map? row))
+      (is (integer? (:checkpoints_timed row)))
+      (is (number? (:checkpoint_req_ratio row)))))
+
+  (testing "unindexed-foreign-keys returns a seq with string keys"
+    (let [rows (pgex/unindexed-foreign-keys db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:table %))
+                        (string? (:constraint %)))
+                  rows))))
+
+  (testing "tables-without-primary-key returns a seq with string keys"
+    (let [rows (pgex/tables-without-primary-key db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:table %)))
+                  rows))))
+
+  (testing "autovacuum-disabled returns a seq (possibly empty)"
+    (is (vector? (pgex/autovacuum-disabled db))))
+
+  (testing "idle-in-transaction returns a seq (possibly empty)"
+    (is (vector? (pgex/idle-in-transaction db))))
+
+  (testing "unlogged-tables returns a seq with string keys"
+    (let [rows (pgex/unlogged-tables db)]
+      (is (vector? rows))
+      (is (every? #(and (string? (:schema %))
+                        (string? (:table %)))
+                  rows)))))
+
+(deftest diagnostic-fixtures
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_test"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_test.no_pk (id integer)"])
+    (jdbc/execute! db ["CREATE UNLOGGED TABLE pgext_test.unlogged_t (id integer)"])
+    (jdbc/execute! db ["CREATE TABLE pgext_test.parent (id integer PRIMARY KEY)"])
+    (jdbc/execute! db ["CREATE TABLE pgext_test.child_unindexed (parent_id integer REFERENCES pgext_test.parent (id))"])
+    (jdbc/execute! db ["CREATE TABLE pgext_test.child_indexed (parent_id integer REFERENCES pgext_test.parent (id))"])
+    (jdbc/execute! db ["CREATE INDEX child_indexed_parent_id_idx ON pgext_test.child_indexed (parent_id)"])
+    (jdbc/execute! db ["CREATE TABLE pgext_test.no_autovac (id integer) WITH (autovacuum_enabled = false)"])
+    (jdbc/execute! db ["CREATE SEQUENCE pgext_test.small_seq AS integer"])
+    (jdbc/execute! db ["CREATE TABLE pgext_test.not_valid (id integer)"])
+    (jdbc/execute! db ["ALTER TABLE pgext_test.not_valid ADD CONSTRAINT positive_id CHECK (id > 0) NOT VALID"])
+
+    (testing "tables-without-primary-key finds a table without a PK"
+      (is (some #(= "no_pk" (:table %)) (pgex/tables-without-primary-key db))))
+
+    (testing "unlogged-tables finds an unlogged table"
+      (is (some #(= "unlogged_t" (:table %)) (pgex/unlogged-tables db))))
+
+    (testing "unindexed-foreign-keys flags the unindexed FK but not the indexed one"
+      (let [rows (pgex/unindexed-foreign-keys db)]
+        (is (some #(and (= "child_unindexed" (:table %))
+                        (= "child_unindexed_parent_id_fkey" (:constraint %)))
+                  rows))
+        (is (not-any? #(= "child_indexed" (:table %)) rows))))
+
+    (testing "autovacuum-disabled finds a table with autovacuum disabled"
+      (is (some #(= "no_autovac" (:table %)) (pgex/autovacuum-disabled db))))
+
+    (testing "sequences finds the integer sequence"
+      (let [rows (pgex/sequences db)]
+        (is (some #(and (= "small_seq" (:sequence %))
+                        (= "integer" (:data_type %)))
+                  rows))))
+
+    (testing "invalid-constraints finds the NOT VALID check constraint"
+      (is (some #(= "positive_id" (:constraint %)) (pgex/invalid-constraints db))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_test CASCADE"]))))
 
 (deftest timescaledb-system-schemas
   (testing "TimescaleDB internal schemas are flagged as system objects and filtered by default"

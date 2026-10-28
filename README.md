@@ -69,8 +69,12 @@ Pass `(read-data-dictionary db {:include-system-objects? true})` to include them
 
 ### 🛠️ Operational Diagnostics
 
-Diagnostic stats based on [ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras/tree/main).
-These are valuable for looking at your database through an operations or DBA lens.
+Diagnostic stats ported from
+[ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras/tree/main),
+[pghero](https://github.com/ankane/pghero), and PostgreSQL's own system
+catalogs. Each source lives in its own `resources/sql/*.sql` file with the
+source license inlined. These are valuable for looking at your database
+through an operations or DBA lens.
 
 | <span>Function</span> | Scenario |
 |---------|---------|
@@ -102,8 +106,45 @@ These are valuable for looking at your database through an operations or DBA len
 | `unused-indexes` | Unused and almost unused indexes |
 | `vacuum-stats` | Dead rows and whether an automatic vacuum is expected to be triggered |
 
+#### pghero
+
+Queries ported from [pghero](https://github.com/ankane/pghero) (MIT, Andrew Kane).
+
+| <span>Function</span> | Scenario |
+|---------|---------|
+| `connection-states` | Connections grouped by state |
+| `invalid-constraints` | Constraints that are NOT VALID |
+| `invalid-indexes` | Indexes that are invalid and need REINDEX |
+| `maintenance` | Last vacuum/analyze and their counts per table |
+| `missing-indexes` | Tables with low index usage and many rows |
+| `replication-lag` | Standby replication lag in seconds |
+| `replication-slots` | Replication slots with lag and retention |
+| `sequences` | Sequences near exhaustion or on small integer types |
+| `transaction-id` | Transaction ID wraparound risk per database |
+| `unused-tables` | Tables never accessed via an index |
+
+#### PostgreSQL native catalogs
+
+Read-only diagnostics over PostgreSQL system catalogs.
+
+| <span>Function</span> | Scenario |
+|---------|---------|
+| `autovacuum-disabled` | Tables with autovacuum disabled |
+| `bgwriter-stats` | Checkpoint and background writer activity |
+| `database-stats` | Cumulative database-level counters |
+| `idle-in-transaction` | Sessions idle in transaction (vacuum blockers) |
+| `replication-stats` | Standby connections and per-standby lag from the primary |
+| `roles` | Roles and their privilege/expiry attributes |
+| `tables-without-primary-key` | Tables without a primary key |
+| `unindexed-foreign-keys` | Foreign keys without a leading index on the referencing columns |
+| `unlogged-tables` | Unlogged tables (data lost on crash) |
+| `wal-archiver` | WAL archiving health |
+| `wal-stats` | WAL activity (PostgreSQL 14+) |
+
 To get a full map of diagnostic stats, use `(read-stats db)` which
-returns a map, with keywords mirroring the above functions.
+returns a map, with keywords mirroring the table above. The single-row
+instance views — `replication-lag`, `wal-stats`, `wal-archiver`, and
+`bgwriter-stats` — are standalone functions (not part of `read-stats`).
 
 Diagnostic queries exclude postgres schemas
 `pg_catalog`, `information_schema`, `pg_toast*`,
