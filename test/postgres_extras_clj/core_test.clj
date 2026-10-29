@@ -159,7 +159,7 @@
     ; this just confirms that they are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 10 (count (keys (pgex/read-data-dictionary db))))))
+    (is (= 11 (count (keys (pgex/read-data-dictionary db))))))
 
   (testing
    "system objects are filtered by default and included with the flag"
@@ -168,10 +168,13 @@
       (is (every? (complement :system_object) (:schemas dd-default)))
       (is (some :system_object (:schemas dd-all)))
       (is (every? (complement :system_object) (:tables dd-default)))
-      (is (every? (complement :system_object) (:columns dd-default)))))
+      (is (every? (complement :system_object) (:columns dd-default)))
+      (is (every? (complement :system_object) (:constraints dd-default)))
+      (is (some :system_object (:constraints dd-all)))))
 
   ; The following calls are covered by the read-data-dictionary fn
   ; | (columns db) | List all database column objects |
+  ; | (constraints db) | List all constraint objects in current database |
   ; | (databases db) | List all databases |
   ; | (functions db) | List all function objects in current database |
   ; | (indexes db) | List all index objects in current database |
@@ -233,6 +236,60 @@
 
     (finally
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_trig CASCADE"]))))
+
+(deftest constraints-data-dictionary
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_con"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_con.parent (id integer PRIMARY KEY, label text UNIQUE)"])
+    (jdbc/execute! db ["CREATE TABLE pgext_con.child (id integer PRIMARY KEY, parent_id integer REFERENCES pgext_con.parent (id), amount integer CHECK (amount > 0))"])
+    (jdbc/execute! db ["CREATE OR REPLACE FUNCTION pgext_con.noop() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql"])
+    (jdbc/execute! db ["CREATE CONSTRAINT TRIGGER child_constr_trig AFTER INSERT ON pgext_con.child DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION pgext_con.noop()"])
+
+    (testing "constraints returns one row per constraint with correct shape"
+      (let [rows (pgex/constraints db)
+            pk   (some #(when (and (= "pgext_con" (:schema %))
+                                   (= "parent" (:table %))
+                                   (= "primary key" (:type %)))
+                          %)
+                       rows)
+            fk   (some #(when (and (= "pgext_con" (:schema %))
+                                   (= "child" (:table %))
+                                   (= "foreign key" (:type %)))
+                          %)
+                       rows)
+            chk  (some #(when (and (= "pgext_con" (:schema %))
+                                   (= "child" (:table %))
+                                   (= "check" (:type %)))
+                          %)
+                       rows)]
+        (is pk)
+        (is (string? (:definition pk)))
+        (is (true? (:validated pk)))
+        (is (false? (:system_object pk)))
+        (is fk)
+        (is (= "pgext_con" (:foreign_schema fk)))
+        (is (= "parent" (:foreign_table fk)))
+        (is chk)
+        (is (re-find #"amount" (:definition chk)))))
+
+    (testing "constraint trigger is deferrable"
+      (let [row (some #(when (= "child_constr_trig" (:constraint %)) %) (pgex/constraints db))]
+        (is row)
+        (is (= "constraint trigger" (:type row)))
+        (is (true? (:deferrable row)))
+        (is (true? (:initially_deferred row)))))
+
+    (testing "constraints filters system objects by default and includes them with the flag"
+      (is (every? (complement :system_object) (pgex/constraints db)))
+      (is (some :system_object (pgex/constraints db {:include-system-objects? true}))))
+
+    (testing "read-data-dictionary includes user constraints and filters system objects"
+      (let [dd (pgex/read-data-dictionary db)]
+        (is (some #(= "pgext_con" (:schema %)) (:constraints dd)))
+        (is (every? (complement :system_object) (:constraints dd)))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_con CASCADE"]))))
 
 (deftest pg-stat-statements-based
   (testing "outliers returns the expected columns"

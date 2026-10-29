@@ -38,6 +38,7 @@
 ;;; SQL files get converted into their respective clojure fns
 ;;;
 (declare columns
+         constraints-raw
          databases
          functions
          indexes
@@ -237,6 +238,21 @@
 ;;; Data Dictionary
 ;;;
 
+(defn constraints
+  "List all named constraints (primary key, unique, foreign key,
+  check, exclusion, and constraint trigger) on tables in the
+  current database.
+
+  By default, system objects (constraints on tables in pg_catalog,
+  information_schema, pg_*, and TimescaleDB's _timescaledb_*,
+  timescaledb_information, and timescaledb_experimental schemas)
+  are excluded. Pass :include-system-objects? true to include them."
+  [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
+  (let [rows (constraints-raw db)]
+    (if include-system-objects?
+      rows
+      (vec (remove :system_object rows)))))
+
 (defn read-data-dictionary
   "Create a data dictionary summarizing all major objects
   in your PostgreSQL database. Respects SQL COMMENTS,
@@ -249,6 +265,7 @@
   [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
   (let [dd {:databases          (databases db)
             :columns            (columns db)
+            :constraints        (constraints db :include-system-objects? include-system-objects?)
             :functions          (functions db)
             :indexes            (indexes db)
             :schemas            (schemas db)

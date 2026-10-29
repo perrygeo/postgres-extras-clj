@@ -52,6 +52,7 @@ of your database, from a data modeling lens.
 | <span>Function</span>  | Scenario |
 |---------|---------|
 | `columns` | List all database column objects |
+| `constraints` | List all constraint objects in current database |
 | `databases` | List all databases |
 | `functions` | List all function objects in current database |
 | `indexes` | List all index objects in current database |
@@ -231,10 +232,12 @@ Generate a data dictionary summarizing all major objects in your database.
 (keys dd)
 ; (:databases
 ;  :columns
+;  :constraints
 ;  :functions
 ;  :indexes
 ;  :schemas
 ;  :tables
+;  :triggers
 ;  :views
 ;  :partition-children
 ;  :partition-parents)

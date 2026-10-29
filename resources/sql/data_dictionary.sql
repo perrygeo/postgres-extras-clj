@@ -92,6 +92,61 @@ WHERE
     AND (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char", 's'::"char", 'v'::"char", 'f'::"char", 'm'::"char"]));
 
 --
+-- :name constraints-raw
+-- :command :query
+-- :result :many
+-- :doc List all constraint objects in current database
+-- Named constraints only (PK/unique/FK/check/exclusion/constraint trigger),
+-- excluding NOT NULL (contype 'n') which is only a pg_constraint row on
+-- PG17+ for domains and PG18+ for table columns.
+SELECT
+    n.nspname::text AS schema,
+    c.relname::text AS table,
+    con.conname::text AS constraint,
+    CASE con.contype
+    WHEN 'p'::"char" THEN
+        'primary key'::text
+    WHEN 'u'::"char" THEN
+        'unique'::text
+    WHEN 'f'::"char" THEN
+        'foreign key'::text
+    WHEN 'c'::"char" THEN
+        'check'::text
+    WHEN 'x'::"char" THEN
+        'exclusion'::text
+    WHEN 't'::"char" THEN
+        'constraint trigger'::text
+    ELSE
+        con.contype::text
+    END AS type,
+    pg_catalog.pg_get_constraintdef(con.oid, TRUE) AS definition,
+    con.convalidated AS validated,
+    con.condeferrable AS deferrable,
+    con.condeferred AS initially_deferred,
+    fn.nspname::text AS foreign_schema,
+    fc.relname::text AS foreign_table,
+    obj_description(con.oid, 'pg_constraint'::name)::text AS description,
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
+        TRUE
+    ELSE
+        FALSE
+    END AS system_object
+FROM
+    pg_catalog.pg_constraint con
+    JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_catalog.pg_class fc ON fc.oid = con.confrelid
+    LEFT JOIN pg_catalog.pg_namespace fn ON fn.oid = fc.relnamespace
+WHERE
+    con.contype IN ('p', 'u', 'f', 'c', 'x', 't')
+    AND c.relkind IN ('r', 'p', 'f')
+ORDER BY
+    n.nspname,
+    c.relname,
+    con.conname;
+
+--
 -- :name databases
 -- :command :query
 -- :result :many

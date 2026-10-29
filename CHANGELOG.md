@@ -6,6 +6,7 @@ Pre 1.0 releases will have breaking changes.
 
 ## [Unreleased]
 
+* Add `constraints` to the data dictionary — lists named constraints (PK/unique/FK/check/exclusion/constraint trigger) with definition, validation, deferrability, FK target, and description. System objects are excluded by default; pass `:include-system-objects? true` to include them.
 * BREAKING: `pgex/records-rank`, To clarify that row counts are *estimates*, I replaced with `:rows` with `:rows_stats_estimate` and `rows_planner_estimate`. You've got to make a choice; pick your poison.
 * Add DDL generation in `resources/sql/ddl.sql` + `postgres-extras-clj.ddl`. You can synthesize `CREATE`/`ALTER` DDL from live catalogs.
 * Add pghero diagnostics (10 new queries) in `resources/sql/pghero.sql`
