@@ -99,6 +99,7 @@
          replication-stats
          roles
          sequence-origin
+         stats-collector-drift-raw
          tables-without-primary-key
          unindexed-foreign-keys
          unlogged-tables
@@ -152,6 +153,18 @@
     (bgwriter-stats-pg17 db)
     (bgwriter-stats-legacy db)))
 
+(defn stats-collector-drift
+  "Row-count drift between the planner estimate (reltuples)
+  and the statistics collector (n_live_tup).
+  Includes a :drift_probability from 0..1
+  (0=perfect agreement, 1=worst case drift).
+  Higher values indicate a manual ANALYZE may be necessary."
+  [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
+  (let [rows (stats-collector-drift-raw db)]
+    (if include-system-objects?
+      rows
+      (vec (remove :system_object rows)))))
+
 ;;;
 ;;; Stats
 ;;;
@@ -161,8 +174,11 @@
   This will invoke all of the public, read-only diagnostic queries in the namespace.
 
   The :outliers and :calls stats require enabling the pg-stat-statements extension,
-  otherwise they will log a warning and return nil."
-  [db & {:keys [limit] :or {limit 10}}]
+  otherwise they will log a warning and return nil.
+
+  By default, :stats-collector-drift excludes system objects. Pass
+  :include-system-objects? true to include them."
+  [db & {:keys [limit include-system-objects?] :or {limit 10 include-system-objects? false}}]
   (let [stats {:all-locks                  (all-locks db)
                :autovacuum-disabled        (autovacuum-disabled db)
                :bloat                      (bloat db)
@@ -198,6 +214,7 @@
                :seq-scans                  (seq-scans db)
                :sequence-origin            (sequence-origin db)
                :sequences                  (sequences db)
+               :stats-collector-drift      (stats-collector-drift db :include-system-objects? include-system-objects?)
                :table-cache-hit            (table-cache-hit db)
                :table-indexes-size         (table-indexes-size db)
                :table-size                 (table-size db)

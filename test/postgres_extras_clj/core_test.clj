@@ -101,7 +101,7 @@
     ; this just confirms that queries are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 43 (count (keys (pgex/read-stats db))))))
+    (is (= 44 (count (keys (pgex/read-stats db))))))
 
   (testing
    "Even an 'empty' postgres database isn't really empty."
@@ -357,7 +357,42 @@
                                      "identity by default"
                                      "explicit"}
                                    (:origin %)))
-                  rows)))))
+                  rows))))
+
+  (testing "stats-collector-drift tags system objects and filters them by default"
+    (jdbc/execute! db ["CREATE TABLE public.drift_test (id integer)"])
+    (jdbc/execute! db ["INSERT INTO public.drift_test SELECT generate_series(1, 1000)"])
+    (jdbc/execute! db ["ANALYZE public.drift_test"])
+    (try
+      (let [rows     (pgex/stats-collector-drift db)
+            all-rows (pgex/stats-collector-drift db {:include-system-objects? true})]
+        (is (vector? rows))
+        (is (seq rows))
+        (is (every? (complement :system_object) rows))
+        (is (some :system_object all-rows))
+        (is (some #(= "drift_test" (:table %)) rows))
+        (is (every? #(and (string? (:schema %))
+                          (string? (:table %))
+                          (or (nil? (:drift_probability %))
+                              (number? (:drift_probability %))))
+                    rows))
+
+        ;; after ANALYZE the planner and the stats collector agree
+        (let [agree (some #(when (= "drift_test" (:table %)) %) rows)]
+          (is (number? (:drift_probability agree)))
+          (is (< (:drift_probability agree) 0.01)))
+
+        ;; force a small disagreement: 1000 live rows vs 1009 planner estimate
+        (jdbc/execute! db ["UPDATE pg_class SET reltuples = 1009 WHERE oid = 'public.drift_test'::regclass"])
+        (let [small (some #(when (= "drift_test" (:table %)) %) (pgex/stats-collector-drift db))]
+          (is (< 0.008 (:drift_probability small) 0.01)))
+
+        ;; force total disagreement: planner says zero, stats say 1000 live rows
+        (jdbc/execute! db ["UPDATE pg_class SET reltuples = 0 WHERE oid = 'public.drift_test'::regclass"])
+        (let [total (some #(when (= "drift_test" (:table %)) %) (pgex/stats-collector-drift db))]
+          (is (= 1.0 (:drift_probability total)))))
+      (finally
+        (jdbc/execute! db ["DROP TABLE IF EXISTS public.drift_test"])))))
 
 (deftest diagnostic-fixtures
   (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_test"])

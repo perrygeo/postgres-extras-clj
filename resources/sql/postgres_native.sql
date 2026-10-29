@@ -362,3 +362,61 @@ WHERE
 ORDER BY
     n.nspname,
     c.relname;
+
+-- :name stats-collector-drift-raw
+-- :command :query
+-- :result :many
+-- :doc Probability of drift between the planner estimates and the statistics collector. 0 = perfect agreement, 1 = total disagreement.
+/* HUG_PSQL_EXTRAS: Probability of drift between the planner estimates and the statistics collector. 0 = perfect agreement, 1 = total disagreement. */
+WITH drift AS (
+    SELECT
+        c.oid,
+        n.nspname AS schema,
+        c.relname AS relname,
+        pg_total_relation_size(c.oid) AS total_size_bytes,
+        GREATEST (c.reltuples, 0)::bigint AS rows_planner_estimate,
+        s.n_live_tup AS rows_stats_estimate,
+        s.n_mod_since_analyze AS modified_since_analyze,
+        s.last_analyze,
+        s.last_autoanalyze,
+        s.last_vacuum,
+        s.last_autovacuum,
+        CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+            OR n.nspname = 'information_schema'::name THEN
+            TRUE
+        ELSE
+            FALSE
+        END AS system_object
+    FROM
+        pg_class c
+        INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+    WHERE
+        c.relkind IN ('r', 'm'))
+SELECT
+    SCHEMA,
+    relname AS table,
+    total_size_bytes,
+    rows_planner_estimate,
+    rows_stats_estimate,
+    modified_since_analyze,
+    last_analyze,
+    last_autoanalyze,
+    last_vacuum,
+    last_autovacuum,
+    system_object,
+    CASE WHEN rows_stats_estimate IS NULL THEN
+        NULL
+    WHEN rows_planner_estimate = 0
+        AND rows_stats_estimate = 0 THEN
+        0.0
+    WHEN rows_planner_estimate = 0
+        OR rows_stats_estimate = 0 THEN
+        1.0
+    ELSE
+        1.0 - LEAST (rows_planner_estimate, rows_stats_estimate)::double precision / GREATEST (rows_planner_estimate, rows_stats_estimate)::double precision
+    END AS drift_probability
+FROM
+    drift
+ORDER BY
+    total_size_bytes DESC;

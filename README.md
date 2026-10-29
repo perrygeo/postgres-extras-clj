@@ -168,6 +168,7 @@ Read-only diagnostics over PostgreSQL system catalogs.
 | `replication-stats` | Standby connections and per-standby lag from the primary |
 | `roles` | Roles and their privilege/expiry attributes |
 | `sequence-origin` | How each sequence was created: serial, identity, or explicit |
+| `stats-collector-drift` | Drift between planner estimate and statistics collector |
 | `tables-without-primary-key` | Tables without a primary key |
 | `unindexed-foreign-keys` | Foreign keys without a leading index on the referencing columns |
 | `unlogged-tables` | Unlogged tables (data lost on crash) |
@@ -182,6 +183,7 @@ instance views — `replication-lag`, `wal-stats`, `wal-archiver`, and
 Diagnostic queries exclude postgres schemas
 `pg_catalog`, `information_schema`, `pg_toast*`,
 and TimescaleDB's internal schemas.
+Pass `:include-system-objects? true` to `read-stats` (or the functions directly) to include them.
 
 Use the `(diagnose (read-stats db))` and `(diagnose-warnings (read-stats db))` functions
 to evaluate the stats according to a set of heuristics.
