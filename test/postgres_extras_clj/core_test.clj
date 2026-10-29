@@ -159,7 +159,7 @@
     ; this just confirms that they are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 9 (count (keys (pgex/read-data-dictionary db))))))
+    (is (= 10 (count (keys (pgex/read-data-dictionary db))))))
 
   (testing
    "system objects are filtered by default and included with the flag"
@@ -181,6 +181,58 @@
   ; | (tables db) | List all table objects in current database |
   ; | (views db) | List all view objects in current database |
   )
+
+(deftest triggers-data-dictionary
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_trig"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_trig.widgets (id integer PRIMARY KEY, updated_at timestamptz)"])
+    (jdbc/execute! db ["CREATE OR REPLACE FUNCTION pgext_trig.set_updated_at() RETURNS trigger AS $$ BEGIN NEW.updated_at := now(); RETURN NEW; END; $$ LANGUAGE plpgsql"])
+    (jdbc/execute! db ["CREATE TRIGGER widgets_before_iu BEFORE INSERT OR UPDATE ON pgext_trig.widgets FOR EACH ROW WHEN (NEW.id IS NOT NULL) EXECUTE FUNCTION pgext_trig.set_updated_at()"])
+
+    (jdbc/execute! db ["CREATE VIEW pgext_trig.widgets_v AS SELECT id, updated_at FROM pgext_trig.widgets"])
+    (jdbc/execute! db ["CREATE OR REPLACE FUNCTION pgext_trig.noop() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql"])
+    (jdbc/execute! db ["CREATE TRIGGER widgets_v_io INSTEAD OF INSERT OR UPDATE ON pgext_trig.widgets_v FOR EACH ROW EXECUTE FUNCTION pgext_trig.noop()"])
+
+    (jdbc/execute! db ["CREATE TABLE pgext_trig.parent_fk (id integer PRIMARY KEY)"])
+    (jdbc/execute! db ["CREATE TABLE pgext_trig.child_fk (parent_id integer REFERENCES pgext_trig.parent_fk (id))"])
+
+    (jdbc/execute! db ["CREATE TABLE pgext_trig.cchild (parent_id integer)"])
+    (jdbc/execute! db ["CREATE CONSTRAINT TRIGGER cchild_deferred_fk AFTER INSERT ON pgext_trig.cchild DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION pgext_trig.noop()"])
+
+    (testing "one row per trigger with correct shape"
+      (let [row (some #(when (= "widgets_before_iu" (:trigger %)) %) (pgex/triggers db))]
+        (is row)
+        (is (= "BEFORE" (:timing row)))
+        (is (= "ROW" (:orientation row)))
+        (is (= "INSERT, UPDATE" (:events row)))
+        (is (= "enabled" (:enabled row)))
+        (is (= "pgext_trig.set_updated_at" (:trigger_function row)))
+        (is (false? (:system_object row)))))
+
+    (testing "INSTEAD OF trigger on a view is returned"
+      (let [row (some #(when (= "widgets_v_io" (:trigger %)) %) (pgex/triggers db))]
+        (is row)
+        (is (= "INSTEAD OF" (:timing row)))
+        (is (= "widgets_v" (:table row)))))
+
+    (testing "FK internal triggers are excluded"
+      (let [rows (pgex/triggers db)]
+        (is (not-any? #(re-find #"RI_Constraint" (:trigger %)) rows))
+        (is (not-any? #(= "child_fk" (:table %)) rows))))
+
+    (testing "constraint trigger is deferrable"
+      (let [row (some #(when (= "cchild_deferred_fk" (:trigger %)) %) (pgex/triggers db))]
+        (is row)
+        (is (true? (:deferrable row)))
+        (is (true? (:initially_deferred row)))))
+
+    (testing "read-data-dictionary includes user triggers and filters system objects"
+      (let [dd (pgex/read-data-dictionary db)]
+        (is (some #(= "widgets_before_iu" (:trigger %)) (:triggers dd)))
+        (is (every? (complement :system_object) (:triggers dd)))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_trig CASCADE"]))))
 
 (deftest pg-stat-statements-based
   (testing "outliers returns the expected columns"

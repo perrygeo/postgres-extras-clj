@@ -446,3 +446,65 @@ SELECT
     *
 FROM
     partition_parent;
+
+--
+-- :name triggers
+-- :command :query
+-- :result :many
+-- :doc List all trigger objects in current database
+--
+SELECT
+    n.nspname::text AS schema,
+    c.relname::text AS table,
+    t.tgname::text AS trigger,
+    pn.nspname::text || '.'::text || p.proname::text AS trigger_function,
+    CASE WHEN ((t.tgtype::int & 2) <> 0) THEN
+        'BEFORE'::text
+    WHEN ((t.tgtype::int & 64) <> 0) THEN
+        'INSTEAD OF'::text
+    ELSE
+        'AFTER'::text
+    END AS timing,
+    trim(trailing ', '::text FROM concat_ws(', '::text,
+        CASE WHEN ((t.tgtype::int & 4) <> 0) THEN 'INSERT'::text END,
+        CASE WHEN ((t.tgtype::int & 8) <> 0) THEN 'DELETE'::text END,
+        CASE WHEN ((t.tgtype::int & 16) <> 0) THEN 'UPDATE'::text END,
+        CASE WHEN ((t.tgtype::int & 32) <> 0) THEN 'TRUNCATE'::text END)) AS events,
+    CASE WHEN ((t.tgtype::int & 1) <> 0) THEN
+        'ROW'::text
+    ELSE
+        'STATEMENT'::text
+    END AS orientation,
+    CASE t.tgenabled
+    WHEN 'O'::"char" THEN
+        'enabled'::text
+    WHEN 'D'::"char" THEN
+        'disabled'::text
+    WHEN 'R'::"char" THEN
+        'replica'::text
+    WHEN 'A'::"char" THEN
+        'always'::text
+    END AS enabled,
+    t.tgdeferrable AS deferrable,
+    t.tginitdeferred AS initially_deferred,
+    pg_catalog.pg_get_triggerdef(t.oid, TRUE) AS definition,
+    obj_description(t.oid, 'pg_trigger'::name)::text AS description,
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
+        TRUE
+    ELSE
+        FALSE
+    END AS system_object
+FROM
+    pg_catalog.pg_trigger t
+    JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
+    JOIN pg_catalog.pg_namespace pn ON pn.oid = p.pronamespace
+WHERE
+    NOT t.tgisinternal
+    AND c.relkind IN ('r', 'p', 'f', 'v')
+ORDER BY
+    n.nspname,
+    c.relname,
+    t.tgname;

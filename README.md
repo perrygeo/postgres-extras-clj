@@ -59,6 +59,7 @@ of your database, from a data modeling lens.
 | `partition-children` | List all child partitions in current database |
 | `partition-parents` | List all parent partition tables in current database |
 | `tables` | List all table objects in current database |
+| `triggers` | List all trigger objects in current database |
 | `views` | List all view objects in current database |
 
 To get a full map of data objects, use `(read-data-dictionary db)` which

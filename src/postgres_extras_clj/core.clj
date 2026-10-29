@@ -45,6 +45,7 @@
          partition-children
          partition-parents
          tables
+         triggers
          views
          all-locks
          bloat
@@ -60,7 +61,6 @@
          index-cache-hit
          index-size
          index-usage
-         kill-all!
          locks
          long-running-queries
          mandelbrot
@@ -253,6 +253,7 @@
             :indexes            (indexes db)
             :schemas            (schemas db)
             :tables             (tables db)
+            :triggers           (triggers db)
             :views              (views db)
             :partition-children (partition-children db)
             :partition-parents  (partition-parents db)}]
