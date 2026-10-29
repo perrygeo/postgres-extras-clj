@@ -660,18 +660,21 @@ LIMIT :v:limit;
 -- :name records-rank
 -- :command :query
 -- :result :many
--- :doc All tables and the number of rows in each ordered by number of rows descending
-/* HUG_PSQL_EXTRAS: All tables and the number of rows in each ordered by number of rows descending */
+-- :doc All tables and their row counts from two sources: the query planner (pg_class.reltuples) and the statistics collector (pg_stat_user_tables.n_live_tup)
+/* HUG_PSQL_EXTRAS: All tables and their row counts from two sources: the query planner (pg_class.reltuples) and the statistics collector (pg_stat_user_tables.n_live_tup) */
 SELECT
-    schemaname AS schema,
-    relname AS table,
-    n_live_tup AS rows
+    psut.schemaname AS schema,
+    psut.relname AS table,
+    GREATEST(c.reltuples, 0)::bigint AS rows_planner_estimate,
+    psut.n_live_tup AS rows_stats_estimate
 FROM
-    pg_stat_user_tables
+    pg_stat_user_tables psut
+    JOIN pg_class c ON c.oid = psut.relid
 WHERE
-    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+    psut.schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
-    n_live_tup DESC;
+    GREATEST(c.reltuples, 0) DESC,
+    psut.n_live_tup DESC;
 
 -- :name seq-scans
 -- :command :query
