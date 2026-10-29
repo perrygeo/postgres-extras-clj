@@ -72,8 +72,8 @@ ORDER BY
 -- :name bloat
 -- :command :query
 -- :result :many
--- :doc Table and index bloat in your database ordered by most wasteful
-/* HUG_PSQL_EXTRAS: Table and index bloat in your database ordered by most wasteful */
+-- :doc Table and index bloat in your database
+/* HUG_PSQL_EXTRAS: Table and index bloat in your database */
 WITH constants AS (
     SELECT
         current_setting('block_size')::numeric AS bs,
@@ -396,8 +396,8 @@ ORDER BY
 -- :name index-size
 -- :command :query
 -- :result :many
--- :doc The size of indexes, descending by size
-/* HUG_PSQL_EXTRAS: The size of indexes, descending by size */
+-- :doc The size of indexes
+/* HUG_PSQL_EXTRAS: The size of indexes */
 SELECT
     n.nspname AS schema,
     c.relname AS index,
@@ -478,8 +478,8 @@ ORDER BY
 -- :name long-running-queries
 -- :command :query
 -- :result :many
--- :doc All queries longer than the threshold by descending duration
-/* HUG_PSQL_EXTRAS: All queries longer than the threshold by descending duration */
+-- :doc All queries longer than the threshold
+/* HUG_PSQL_EXTRAS: All queries longer than the threshold */
 SELECT
     pid,
     now() - pg_stat_activity.query_start AS duration,
@@ -679,8 +679,8 @@ ORDER BY
 -- :name seq-scans
 -- :command :query
 -- :result :many
--- :doc Count of sequential scans by table descending by order
-/* HUG_PSQL_EXTRAS: Count of sequential scans by table descending by order */
+-- :doc Count of sequential scans by table
+/* HUG_PSQL_EXTRAS: Count of sequential scans by table */
 SELECT
     schemaname AS schema,
     relname AS table,
@@ -719,8 +719,8 @@ ORDER BY
 -- :name table-indexes-size
 -- :command :query
 -- :result :many
--- :doc Total size of all the indexes on each table, descending by size
-/* HUG_PSQL_EXTRAS: Total size of all the indexes on each table, descending by size */
+-- :doc Total size of all the indexes on each table
+/* HUG_PSQL_EXTRAS: Total size of all the indexes on each table */
 SELECT
     n.nspname AS schema,
     c.relname AS table,
@@ -737,8 +737,8 @@ ORDER BY
 -- :name table-size
 -- :command :query
 -- :result :many
--- :doc Size of the tables (excluding indexes), descending by size
-/* HUG_PSQL_EXTRAS: Size of the tables (excluding indexes), descending by size */
+-- :doc Size of the tables (excluding indexes)
+/* HUG_PSQL_EXTRAS: Size of the tables (excluding indexes) */
 SELECT
     n.nspname AS schema,
     c.relname AS table,
@@ -769,8 +769,8 @@ WHERE
 -- :name total-table-size
 -- :command :query
 -- :result :many
--- :doc Size of the tables (including indexes), descending by size
-/* HUG_PSQL_EXTRAS: Size of the tables (including indexes), descending by size */
+-- :doc Size of the tables (including indexes)
+/* HUG_PSQL_EXTRAS: Size of the tables (including indexes) */
 SELECT
     n.nspname AS schema,
     c.relname AS table,
@@ -789,8 +789,7 @@ ORDER BY
 -- :result :many
 -- :doc Unused and almost unused indexes
 /* HUG_PSQL_EXTRAS: Unused and almost unused indexes */
-/* Ordered by their size relative to the number of index scans.
- Exclude indexes of very small tables (less than 5 pages),
+/* Exclude indexes of very small tables (less than 5 pages),
  where the planner will almost invariably select a sequential scan,
  but may not in the future as the table grows */
 SELECT

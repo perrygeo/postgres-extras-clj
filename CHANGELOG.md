@@ -5,11 +5,14 @@ This project's version numbers are MAJOR.MINOR.PR-NUMBER by convention.
 Pre 1.0 releases will have breaking changes.
 
 ## [Unreleased]
-* Add pghero diagnostics (10 queries) in `resources/sql/pghero.sql`
-* Add PostgreSQL-native catalog diagnostics (12 queries) in `resources/sql/postgres_native.sql`
+
+* BREAKING: `pgex/records-rank`, To clarify that row counts are *estimates*, I replaced with `:rows` with `:rows_stats_estimate` and `rows_planner_estimate`. You've got to make a choice; pick your poison.
+* Add DDL generation in `resources/sql/ddl.sql` + `postgres-extras-clj.ddl`. You can synthesize `CREATE`/`ALTER` DDL from live catalogs.
+* Add pghero diagnostics (10 new queries) in `resources/sql/pghero.sql`
+* Add PostgreSQL-native catalog diagnostics (12 new queries) in `resources/sql/postgres_native.sql`
 * `bgwriter-stats` dispatches on PG17+ (`pg_stat_checkpointer`)
 * `wal-stats` targets the stable `pg_stat_wal` columns (PG14+)
-* `read-stats` returns 43 diagnostic keys
+* `read-stats` returns all 43 diagnostic keys
 
 ## [0.2.22] - 2026-10-25
 * New MAJOR.MINOR.PR-NUMBER versioning. start 0.2.x
