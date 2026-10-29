@@ -103,7 +103,18 @@
          unindexed-foreign-keys
          unlogged-tables
          wal-archiver
-         wal-stats)
+         wal-stats
+
+         ;; ddl.sql
+         ddl-table-columns
+         ddl-table-options
+         ddl-table-constraints
+         ddl-index-defs
+         ddl-view-defs
+         ddl-function-defs
+         ddl-trigger-defs
+         ddl-rule-defs
+         ddl-comments)
 
 (hugsql/def-db-fns "sql/postgres_extras.sql")
 
@@ -112,6 +123,8 @@
 (hugsql/def-db-fns "sql/pghero.sql")
 
 (hugsql/def-db-fns "sql/postgres_native.sql")
+
+(hugsql/def-db-fns "sql/ddl.sql")
 
 (defn- pg-version-num
   "Numeric PostgreSQL server version, e.g. 170005 for 17.5."

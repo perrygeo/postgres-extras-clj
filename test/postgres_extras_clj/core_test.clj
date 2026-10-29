@@ -128,7 +128,7 @@
   ; (pgex/mandelbrot db) | The mandelbrot set |
   ; (pgex/null-indexes db) | Find indexes with a high ratio of NULL values |
   ; (pgex/outliers db) | Queries that have longest execution time in aggregate. |
-  ; (pgex/records-rank db) | All tables and the number of rows in each ordered by number of rows descending |
+  ; (pgex/records-rank db) | All tables with row counts from both the planner and the stats collector |
   ; (pgex/seq-scans db) | Count of sequential scans by table descending by order |
   ; (pgex/table-cache-hit db) | Calculates your cache hit rate for reading tables |
   ; (pgex/table-indexes-size db) | Total size of all the indexes on each table, descending by size |
