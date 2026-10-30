@@ -3,7 +3,7 @@
 A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 
 ```clojure
-com.github.perrygeo/postgres-extras-clj {:mvn/version "0.2.22"}
+com.github.perrygeo/postgres-extras-clj {:mvn/version "0.3.23"}
 ```
 
 * [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
@@ -52,13 +52,16 @@ of your database, from a data modeling lens.
 | <span>Function</span>  | Scenario |
 |---------|---------|
 | `columns` | List all database column objects |
+| `constraints` | List all constraint objects in current database |
 | `databases` | List all databases |
 | `functions` | List all function objects in current database |
 | `indexes` | List all index objects in current database |
-| `schemas` | List all shemas in current database |
+| `key-relationships` | List all foreign key relationships, resolved to referencing and referenced columns |
+| `schemas` | List all schemas in current database |
 | `partition-children` | List all child partitions in current database |
 | `partition-parents` | List all parent partition tables in current database |
 | `tables` | List all table objects in current database |
+| `triggers` | List all trigger objects in current database |
 | `views` | List all view objects in current database |
 
 To get a full map of data objects, use `(read-data-dictionary db)` which
@@ -67,15 +70,51 @@ returns a map, with keywords mirroring the above functions.
 System objects are excluded by default.
 Pass `(read-data-dictionary db {:include-system-objects? true})` to include them.
 
+### 🧬 DDL Generation
+
+Experimental! Not widely tested yet.
+
+The `postgres-extras-clj.ddl` namespace provides fns to
+generate `CREATE`/`ALTER` DDL from a live database.
+
+Inspired by DBeaver's "DDL" window and `pg_dump`.
+These functions reassemble the *effective* DDL statements using system catalogs
+and `pg_get_*def` decompilers.
+
+In Clojure, we assemble the `CREATE TABLE` strings via the public API.
+
+```clojure
+(require '[postgres-extras-clj.ddl :as ddl])
+
+(ddl/ddl-for-table db "public" "users")    ;=> "CREATE TABLE ...;"
+(ddl/ddl-for-view db "public" "user_view")  ;=> "CREATE VIEW ...;"
+(ddl/generate-ddl db)                       ;=> full-database DDL string
+```
+Configuration:
+
+```clojure
+(ddl/generate-ddl db {:schemas ["public" "audit"]})   ; restrict to schemas
+(ddl/generate-ddl db {:include-system-objects? true})  ; include pg_catalog etc.
+```
+
+One known limitation: I don't yet have a way to filter out extension-created objects.
+Extensions like PostGIS and pg_stat_statements will create many functions, tables, and views directly in the `public` schema.
+Their definition will get dumped to the DDL string just like your own tables.
+In the future, this namespace may filter out extension-created objects by default.
+
 ### 🛠️ Operational Diagnostics
 
-Diagnostic stats based on [ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras/tree/main).
-These are valuable for looking at your database through an operations or DBA lens.
+Diagnostic stats ported from
+[ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras/tree/main),
+[pghero](https://github.com/ankane/pghero), and PostgreSQL's own system
+catalogs. Each source lives in its own `resources/sql/*.sql` file with the
+source license inlined. These are valuable for looking at your database
+through an operations or DBA lens.
 
 | <span>Function</span> | Scenario |
 |---------|---------|
 | `all-locks` | Queries with active locks |
-| `bloat` | Table and index "bloat" in your database ordered by most wasteful |
+| `bloat` | Table and index "bloat" in your database |
 | `blocking` | Queries holding locks other queries are waiting to be released |
 | `cache-hit` | Index and table hit rate |
 | `calls` | Queries that have the highest frequency of execution |
@@ -85,29 +124,69 @@ These are valuable for looking at your database through an operations or DBA len
 | `extensions` | Available and installed extensions |
 | `health-check` | Checks the db for liveliness |
 | `index-cache-hit` | Calculates your cache hit rate for reading indexes |
-| `index-size` | The size of indexes, descending by size |
+| `index-size` | The size of indexes |
 | `index-usage` | Index hit rate (effective databases are at 99% and up) |
 | `kill-all!` | Kill all the active database connections |
 | `locks` | Queries with active exclusive locks |
-| `long-running-queries` | All queries longer than the threshold by descending duration |
+| `long-running-queries` | All queries longer than the threshold |
 | `null-indexes` | Find indexes with a high ratio of NULL values |
 | `outliers` | Queries that have longest execution time in aggregate. |
-| `records-rank` | All tables and the number of rows in each ordered by number of rows descending |
-| `seq-scans` | Count of sequential scans by table descending by order |
+| `records-rank` | All tables with row counts from both the query planner (`rows_planner_estimate`) and the statistics collector (`rows_stats_estimate`) |
+| `seq-scans` | Count of sequential scans by table |
 | `table-cache-hit` | Calculates your cache hit rate for reading tables |
-| `table-indexes-size` | Total size of all the indexes on each table, descending by size |
-| `table-size` | Size of the tables (excluding indexes), descending by size |
+| `table-indexes-size` | Total size of all the indexes on each table |
+| `table-size` | Size of the tables (excluding indexes) |
 | `total-index-size` | Total size of all indexes in MB |
-| `total-table-size` | Size of the tables (including indexes), descending by size |
+| `total-table-size` | Size of the tables (including indexes) |
 | `unused-indexes` | Unused and almost unused indexes |
 | `vacuum-stats` | Dead rows and whether an automatic vacuum is expected to be triggered |
 
+#### pghero
+
+Queries ported from [pghero](https://github.com/ankane/pghero) (MIT, Andrew Kane).
+
+| <span>Function</span> | Scenario |
+|---------|---------|
+| `connection-states` | Connections grouped by state |
+| `invalid-constraints` | Constraints that are NOT VALID |
+| `invalid-indexes` | Indexes that are invalid and need REINDEX |
+| `maintenance` | Last vacuum/analyze and their counts per table |
+| `missing-indexes` | Tables with low index usage and many rows |
+| `replication-lag` | Standby replication lag in seconds |
+| `replication-slots` | Replication slots with lag and retention |
+| `sequences` | Sequences near exhaustion or on small integer types |
+| `transaction-id` | Transaction ID wraparound risk per database |
+| `unused-tables` | Tables never accessed via an index |
+
+#### PostgreSQL native catalogs
+
+Read-only diagnostics over PostgreSQL system catalogs.
+
+| <span>Function</span> | Scenario |
+|---------|---------|
+| `autovacuum-disabled` | Tables with autovacuum disabled |
+| `bgwriter-stats` | Checkpoint and background writer activity |
+| `database-stats` | Cumulative database-level counters |
+| `idle-in-transaction` | Sessions idle in transaction (vacuum blockers) |
+| `replication-stats` | Standby connections and per-standby lag from the primary |
+| `roles` | Roles and their privilege/expiry attributes |
+| `sequence-origin` | How each sequence was created: serial, identity, or explicit |
+| `stats-collector-drift` | Drift between planner estimate and statistics collector |
+| `tables-without-primary-key` | Tables without a primary key |
+| `unindexed-foreign-keys` | Foreign keys without a leading index on the referencing columns |
+| `unlogged-tables` | Unlogged tables (data lost on crash) |
+| `wal-archiver` | WAL archiving health |
+| `wal-stats` | WAL activity (PostgreSQL 14+) |
+
 To get a full map of diagnostic stats, use `(read-stats db)` which
-returns a map, with keywords mirroring the above functions.
+returns a map, with keywords mirroring the table above. The single-row
+instance views — `replication-lag`, `wal-stats`, `wal-archiver`, and
+`bgwriter-stats` — are standalone functions (not part of `read-stats`).
 
 Diagnostic queries exclude postgres schemas
 `pg_catalog`, `information_schema`, `pg_toast*`,
 and TimescaleDB's internal schemas.
+Pass `:include-system-objects? true` to `read-stats` (or the functions directly) to include them.
 
 Use the `(diagnose (read-stats db))` and `(diagnose-warnings (read-stats db))` functions
 to evaluate the stats according to a set of heuristics.
@@ -154,10 +233,12 @@ Generate a data dictionary summarizing all major objects in your database.
 (keys dd)
 ; (:databases
 ;  :columns
+;  :constraints
 ;  :functions
 ;  :indexes
 ;  :schemas
 ;  :tables
+;  :triggers
 ;  :views
 ;  :partition-children
 ;  :partition-parents)

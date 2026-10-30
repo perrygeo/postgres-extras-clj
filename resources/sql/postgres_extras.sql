@@ -72,8 +72,8 @@ ORDER BY
 -- :name bloat
 -- :command :query
 -- :result :many
--- :doc Table and index bloat in your database ordered by most wasteful
-/* HUG_PSQL_EXTRAS: Table and index bloat in your database ordered by most wasteful */
+-- :doc Table and index bloat in your database
+/* HUG_PSQL_EXTRAS: Table and index bloat in your database */
 WITH constants AS (
     SELECT
         current_setting('block_size')::numeric AS bs,
@@ -106,25 +106,25 @@ FROM (
         ma,
         bs,
         SUM((1 - null_frac) * avg_width) AS datawidth,
-    MAX(null_frac) AS maxfracsum,
-    hdr + (
-        SELECT
-            1 + count(*) / 8
+        MAX(null_frac) AS maxfracsum,
+        hdr + (
+            SELECT
+                1 + count(*) / 8
+            FROM
+                pg_stats s2
+            WHERE
+                null_frac <> 0
+                AND s2.schemaname = s.schemaname
+                AND s2.tablename = s.tablename) AS nullhdr
         FROM
-            pg_stats s2
-        WHERE
-            null_frac <> 0
-            AND s2.schemaname = s.schemaname
-            AND s2.tablename = s.tablename) AS nullhdr
-    FROM
-        pg_stats s,
-        constants
-    GROUP BY
-        1,
-        2,
-        3,
-        4,
-        5) AS foo
+            pg_stats s,
+            constants
+        GROUP BY
+            1,
+            2,
+            3,
+            4,
+            5) AS foo
 ),
 table_bloat AS (
     SELECT
@@ -396,8 +396,8 @@ ORDER BY
 -- :name index-size
 -- :command :query
 -- :result :many
--- :doc The size of indexes, descending by size
-/* HUG_PSQL_EXTRAS: The size of indexes, descending by size */
+-- :doc The size of indexes
+/* HUG_PSQL_EXTRAS: The size of indexes */
 SELECT
     n.nspname AS schema,
     c.relname AS index,
@@ -478,8 +478,8 @@ ORDER BY
 -- :name long-running-queries
 -- :command :query
 -- :result :many
--- :doc All queries longer than the threshold by descending duration
-/* HUG_PSQL_EXTRAS: All queries longer than the threshold by descending duration */
+-- :doc All queries longer than the threshold
+/* HUG_PSQL_EXTRAS: All queries longer than the threshold */
 SELECT
     pid,
     now() - pg_stat_activity.query_start AS duration,
@@ -521,31 +521,32 @@ WITH RECURSIVE Z (
             i
         FROM
             generate_series(0, 101) AS i) AS xgen (x,
-        ix),
-    (
+            ix),
+        (
+            SELECT
+                -1.5 + 0.031 * i,
+                i
+            FROM
+                generate_series(0, 101) AS i) AS ygen (y,
+                iy)
+        UNION ALL
         SELECT
-            -1.5 + 0.031 * i,
-            i
+            IX,
+            IY,
+            CX,
+            CY,
+            X * X - Y * Y + CX AS X,
+            Y * X * 2 + CY,
+            I + 1
         FROM
-            generate_series(0, 101) AS i) AS ygen (y,
-            iy)
-    UNION ALL
-    SELECT
-        IX,
-        IY,
-        CX,
-        CY,
-        X * X - Y * Y + CX AS X,
-        Y * X * 2 + CY,
-        I + 1
-    FROM
-        Z
-    WHERE
-        X * X + Y * Y < 16::float
-        AND I < 100
+            Z
+        WHERE
+            X * X + Y * Y < 16::float
+            AND I < 100
 )
 SELECT
-    array_to_string(array_agg(SUBSTRING(' .,,,-----++++%%%%@@@@#### ', LEAST (GREATEST (I, 1), 27), 1)), '') AS art
+    array_to_string(array_agg(SUBSTRING( ' .,,,-----++++%%%%@@@@#### '
+, LEAST (GREATEST (I, 1), 27), 1)), '') AS art
 FROM (
     SELECT
         IX,
@@ -609,6 +610,7 @@ SELECT
     query AS query,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
     (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) / calls AS ms_per_call,
     calls,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * (blk_read_time + blk_write_time))) AS sync_io_time_ms
 FROM
@@ -636,6 +638,7 @@ SELECT
     query AS query,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) AS exec_time_ms,
     (total_exec_time / sum(total_exec_time) OVER ()) AS prop_exec_time,
+    EXTRACT(milliseconds FROM (interval '1 millisecond' * total_exec_time)) / calls AS ms_per_call,
     calls,
     EXTRACT(milliseconds FROM (interval '1 millisecond' * (shared_blk_read_time + shared_blk_write_time + local_blk_read_time + local_blk_write_time + temp_blk_read_time + temp_blk_write_time))) AS sync_io_time_ms
 FROM
@@ -657,24 +660,27 @@ LIMIT :v:limit;
 -- :name records-rank
 -- :command :query
 -- :result :many
--- :doc All tables and the number of rows in each ordered by number of rows descending
-/* HUG_PSQL_EXTRAS: All tables and the number of rows in each ordered by number of rows descending */
+-- :doc All tables and their row counts from two sources: the query planner (pg_class.reltuples) and the statistics collector (pg_stat_user_tables.n_live_tup)
+/* HUG_PSQL_EXTRAS: All tables and their row counts from two sources: the query planner (pg_class.reltuples) and the statistics collector (pg_stat_user_tables.n_live_tup) */
 SELECT
-    schemaname AS schema,
-    relname AS table,
-    n_live_tup AS rows
+    psut.schemaname AS schema,
+    psut.relname AS table,
+    GREATEST(c.reltuples, 0)::bigint AS rows_planner_estimate,
+    psut.n_live_tup AS rows_stats_estimate
 FROM
-    pg_stat_user_tables
+    pg_stat_user_tables psut
+    JOIN pg_class c ON c.oid = psut.relid
 WHERE
-    schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+    psut.schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
-    n_live_tup DESC;
+    GREATEST(c.reltuples, 0) DESC,
+    psut.n_live_tup DESC;
 
 -- :name seq-scans
 -- :command :query
 -- :result :many
--- :doc Count of sequential scans by table descending by order
-/* HUG_PSQL_EXTRAS: Count of sequential scans by table descending by order */
+-- :doc Count of sequential scans by table
+/* HUG_PSQL_EXTRAS: Count of sequential scans by table */
 SELECT
     schemaname AS schema,
     relname AS table,
@@ -713,8 +719,8 @@ ORDER BY
 -- :name table-indexes-size
 -- :command :query
 -- :result :many
--- :doc Total size of all the indexes on each table, descending by size
-/* HUG_PSQL_EXTRAS: Total size of all the indexes on each table, descending by size */
+-- :doc Total size of all the indexes on each table
+/* HUG_PSQL_EXTRAS: Total size of all the indexes on each table */
 SELECT
     n.nspname AS schema,
     c.relname AS table,
@@ -731,8 +737,8 @@ ORDER BY
 -- :name table-size
 -- :command :query
 -- :result :many
--- :doc Size of the tables (excluding indexes), descending by size
-/* HUG_PSQL_EXTRAS: Size of the tables (excluding indexes), descending by size */
+-- :doc Size of the tables (excluding indexes)
+/* HUG_PSQL_EXTRAS: Size of the tables (excluding indexes) */
 SELECT
     n.nspname AS schema,
     c.relname AS table,
@@ -763,8 +769,8 @@ WHERE
 -- :name total-table-size
 -- :command :query
 -- :result :many
--- :doc Size of the tables (including indexes), descending by size
-/* HUG_PSQL_EXTRAS: Size of the tables (including indexes), descending by size */
+-- :doc Size of the tables (including indexes)
+/* HUG_PSQL_EXTRAS: Size of the tables (including indexes) */
 SELECT
     n.nspname AS schema,
     c.relname AS table,
@@ -783,8 +789,7 @@ ORDER BY
 -- :result :many
 -- :doc Unused and almost unused indexes
 /* HUG_PSQL_EXTRAS: Unused and almost unused indexes */
-/* Ordered by their size relative to the number of index scans.
- Exclude indexes of very small tables (less than 5 pages),
+/* Exclude indexes of very small tables (less than 5 pages),
  where the planner will almost invariably select a sequential scan,
  but may not in the future as the table grows */
 SELECT
@@ -873,4 +878,3 @@ SELECT
 -- :doc Numeric PostgreSQL server version (e.g. 170005 for 17.5)
 SELECT
     current_setting('server_version_num')::int AS version_num;
-

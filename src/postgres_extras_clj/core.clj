@@ -38,6 +38,8 @@
 ;;; SQL files get converted into their respective clojure fns
 ;;;
 (declare columns
+         constraints-raw
+         key-relationships-raw
          databases
          functions
          indexes
@@ -45,6 +47,7 @@
          partition-children
          partition-parents
          tables
+         triggers
          views
          all-locks
          bloat
@@ -60,7 +63,6 @@
          index-cache-hit
          index-size
          index-usage
-         kill-all!
          locks
          long-running-queries
          mandelbrot
@@ -76,11 +78,56 @@
          total-index-size
          total-table-size
          unused-indexes
-         vacuum-stats)
+         vacuum-stats
+
+         ;; pghero.sql
+         connection-states
+         invalid-constraints
+         invalid-indexes
+         maintenance
+         missing-indexes
+         replication-lag
+         replication-slots
+         sequences
+         transaction-id
+         unused-tables
+
+         ;; postgres_native.sql
+         autovacuum-disabled
+         bgwriter-stats-legacy
+         bgwriter-stats-pg17
+         database-stats
+         idle-in-transaction
+         replication-stats
+         roles
+         sequence-origin
+         stats-collector-drift-raw
+         tables-without-primary-key
+         unindexed-foreign-keys
+         unlogged-tables
+         wal-archiver
+         wal-stats
+
+         ;; ddl.sql
+         ddl-table-columns
+         ddl-table-options
+         ddl-table-constraints
+         ddl-index-defs
+         ddl-view-defs
+         ddl-function-defs
+         ddl-trigger-defs
+         ddl-rule-defs
+         ddl-comments)
 
 (hugsql/def-db-fns "sql/postgres_extras.sql")
 
 (hugsql/def-db-fns "sql/data_dictionary.sql")
+
+(hugsql/def-db-fns "sql/pghero.sql")
+
+(hugsql/def-db-fns "sql/postgres_native.sql")
+
+(hugsql/def-db-fns "sql/ddl.sql")
 
 (defn- pg-version-num
   "Numeric PostgreSQL server version, e.g. 170005 for 17.5."
@@ -88,26 +135,37 @@
   (:version_num (server-version-num db)))
 
 (defn calls
-  "Queries that have the highest frequency of execution.
-
-  Dispatches to a version-appropriate query because PostgreSQL 17 renamed
-  pg_stat_statements.blk_read_time/blk_write_time into shared/local/temp
-  read/write time columns."
+  "Queries that have the highest frequency of execution."
   [db {:keys [limit] :or {limit 10}}]
   (if (>= (pg-version-num db) 170000)
     (calls-pg17 db {:limit limit})
     (calls-legacy db {:limit limit})))
 
 (defn outliers
-  "Queries that have longest execution time in aggregate.
-
-  Dispatches to a version-appropriate query because PostgreSQL 17 renamed
-  pg_stat_statements.blk_read_time/blk_write_time into shared/local/temp
-  read/write time columns."
+  "Queries that have longest execution time in aggregate."
   [db {:keys [limit] :or {limit 10}}]
   (if (>= (pg-version-num db) 170000)
     (outliers-pg17 db {:limit limit})
     (outliers-legacy db {:limit limit})))
+
+(defn bgwriter-stats
+  "Checkpoint and background writer activity."
+  [db]
+  (if (>= (pg-version-num db) 170000)
+    (bgwriter-stats-pg17 db)
+    (bgwriter-stats-legacy db)))
+
+(defn stats-collector-drift
+  "Row-count drift between the planner estimate (reltuples)
+  and the statistics collector (n_live_tup).
+  Includes a :drift_probability from 0..1
+  (0=perfect agreement, 1=worst case drift).
+  Higher values indicate a manual ANALYZE may be necessary."
+  [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
+  (let [rows (stats-collector-drift-raw db)]
+    (if include-system-objects?
+      rows
+      (vec (remove :system_object rows)))))
 
 ;;;
 ;;; Stats
@@ -118,37 +176,59 @@
   This will invoke all of the public, read-only diagnostic queries in the namespace.
 
   The :outliers and :calls stats require enabling the pg-stat-statements extension,
-  otherwise they will log a warning and return nil."
-  [db & {:keys [limit] :or {limit 10}}]
-  (let [stats {:all-locks            (all-locks db)
-               :bloat                (bloat db)
-               :blocking             (blocking db)
-               :cache-hit            (cache-hit db)
-               :calls                (try
-                                       (calls db {:limit limit})
-                                       (catch PSQLException e (log/warn (format-psql-exc e))))
-               :connections          (connections db)
-               :db-settings          (db-settings db)
-               :duplicate-indexes    (duplicate-indexes db)
-               :extensions           (extensions db)
-               :index-cache-hit      (index-cache-hit db)
-               :index-size           (index-size db)
-               :index-usage          (index-usage db)
-               :locks                (locks db)
-               :long-running-queries (long-running-queries db)
-               :null-indexes         (null-indexes db)
-               :outliers             (try
-                                       (outliers db {:limit limit})
-                                       (catch PSQLException e (log/warn (format-psql-exc e))))
-               :records-rank         (records-rank db)
-               :seq-scans            (seq-scans db)
-               :table-cache-hit      (table-cache-hit db)
-               :table-indexes-size   (table-indexes-size db)
-               :table-size           (table-size db)
-               :total-index-size     (total-index-size db)
-               :total-table-size     (total-table-size db)
-               :unused-indexes       (unused-indexes db {:min_scans 50})
-               :vacuum-stats         (vacuum-stats db)}]
+  otherwise they will log a warning and return nil.
+
+  By default, :stats-collector-drift excludes system objects. Pass
+  :include-system-objects? true to include them."
+  [db & {:keys [limit include-system-objects?] :or {limit 10 include-system-objects? false}}]
+  (let [stats {:all-locks                  (all-locks db)
+               :autovacuum-disabled        (autovacuum-disabled db)
+               :bloat                      (bloat db)
+               :blocking                   (blocking db)
+               :cache-hit                  (cache-hit db)
+               :calls                      (try
+                                             (calls db {:limit limit})
+                                             (catch PSQLException e (log/warn (format-psql-exc e))))
+               :connection-states          (connection-states db)
+               :connections                (connections db)
+               :database-stats             (database-stats db)
+               :db-settings                (db-settings db)
+               :duplicate-indexes          (duplicate-indexes db)
+               :extensions                 (extensions db)
+               :idle-in-transaction        (idle-in-transaction db)
+               :index-cache-hit            (index-cache-hit db)
+               :index-size                 (index-size db)
+               :index-usage                (index-usage db)
+               :invalid-constraints        (invalid-constraints db)
+               :invalid-indexes            (invalid-indexes db)
+               :locks                      (locks db)
+               :long-running-queries       (long-running-queries db)
+               :maintenance                (maintenance db)
+               :missing-indexes            (missing-indexes db)
+               :null-indexes               (null-indexes db)
+               :outliers                   (try
+                                             (outliers db {:limit limit})
+                                             (catch PSQLException e (log/warn (format-psql-exc e))))
+               :records-rank               (records-rank db)
+               :replication-slots          (replication-slots db)
+               :replication-stats          (replication-stats db)
+               :roles                      (roles db)
+               :seq-scans                  (seq-scans db)
+               :sequence-origin            (sequence-origin db)
+               :sequences                  (sequences db)
+               :stats-collector-drift      (stats-collector-drift db :include-system-objects? include-system-objects?)
+               :table-cache-hit            (table-cache-hit db)
+               :table-indexes-size         (table-indexes-size db)
+               :table-size                 (table-size db)
+               :tables-without-primary-key (tables-without-primary-key db)
+               :total-index-size           (total-index-size db)
+               :total-table-size           (total-table-size db)
+               :transaction-id             (transaction-id db)
+               :unindexed-foreign-keys     (unindexed-foreign-keys db)
+               :unlogged-tables            (unlogged-tables db)
+               :unused-indexes             (unused-indexes db {:min_scans 50})
+               :unused-tables              (unused-tables db)
+               :vacuum-stats               (vacuum-stats db)}]
     (into {} (map (fn [[k v]]
                     [k (if (nil? v)
                          nil
@@ -158,6 +238,70 @@
 ;;;
 ;;; Data Dictionary
 ;;;
+
+(defn constraints
+  "List all named constraints (primary key, unique, foreign key,
+  check, exclusion, and constraint trigger) on tables in the
+  current database.
+
+  By default, system objects (constraints on tables in pg_catalog,
+  information_schema, pg_*, and TimescaleDB's _timescaledb_*,
+  timescaledb_information, and timescaledb_experimental schemas)
+  are excluded. Pass :include-system-objects? true to include them."
+  [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
+  (let [rows (constraints-raw db)]
+    (if include-system-objects?
+      rows
+      (vec (remove :system_object rows)))))
+
+(defn key-relationships
+  "List all foreign key relationships as ERD-ready edges.
+
+  Each map describes one foreign key constraint:
+    :constraint          — name of the foreign key constraint
+    :schema, :table      — referencing side
+    :columns             — referencing columns, in constraint order
+    :foreign_schema,
+    :foreign_table       — referenced side
+    :foreign_columns     — referenced columns, parallel to :columns
+    :delete_action       — ON DELETE action (NO ACTION, RESTRICT,
+                           CASCADE, SET NULL, SET DEFAULT)
+    :update_action       — ON UPDATE action
+    :match_type          — MATCH type (SIMPLE, FULL, PARTIAL)
+    :deferrable,
+    :initially_deferred,
+    :validated
+
+  Composite foreign keys produce a single relationship map with
+  parallel :columns and :foreign_columns vectors.
+
+  By default, system objects are excluded. Pass :include-system-objects?
+  true to include them."
+  [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
+  (let [rels (->> (group-by (juxt :schema :table :constraint)
+                            (key-relationships-raw db))
+                  (map (fn [[[schema table constraint] rows]]
+                         (let [rows (sort-by :position rows)
+                               head (first rows)]
+                           {:constraint         constraint
+                            :schema             schema
+                            :table              table
+                            :columns            (mapv :column rows)
+                            :foreign_schema     (:foreign_schema head)
+                            :foreign_table      (:foreign_table head)
+                            :foreign_columns    (mapv :foreign_column rows)
+                            :delete_action      (:delete_action head)
+                            :update_action      (:update_action head)
+                            :match_type         (:match_type head)
+                            :deferrable         (:deferrable head)
+                            :initially_deferred (:initially_deferred head)
+                            :validated          (:validated head)
+                            :system_object      (:system_object head)})))
+                  (sort-by (juxt :schema :table :constraint))
+                  vec)]
+    (if include-system-objects?
+      rels
+      (vec (remove :system_object rels)))))
 
 (defn read-data-dictionary
   "Create a data dictionary summarizing all major objects
@@ -171,10 +315,13 @@
   [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
   (let [dd {:databases          (databases db)
             :columns            (columns db)
+            :constraints        (constraints db :include-system-objects? include-system-objects?)
             :functions          (functions db)
             :indexes            (indexes db)
+            :key-relationships  (key-relationships db :include-system-objects? include-system-objects?)
             :schemas            (schemas db)
             :tables             (tables db)
+            :triggers           (triggers db)
             :views              (views db)
             :partition-children (partition-children db)
             :partition-parents  (partition-parents db)}]
@@ -226,12 +373,10 @@
                       ident (idfn %)]
                   {:diagnostic k
                    :pass       ret
-                   :message    (do
-                                 (println k ident)
-                                 (if ret
-                                   (str "✓  Passed " k " " (tidy-report ident))
-                                   (str "! Warning " k " " (tidy-report ident)
-                                        " " onfalse "\n" %)))
+                   :message    (if ret
+                                 (str "Passed " k " " (tidy-report ident))
+                                 (str "Warning " k " " (tidy-report ident)
+                                      " " onfalse))
                    :data       (when (not ret) %)})
                (get stats k)))
         diagnostic-fns)))

@@ -58,7 +58,7 @@
 ;; --- File bumping ----------------------------------------------------------
 
 (defn- bump-readme! [version]
-  (let [path "README.md"
+  (let [path    "README.md"
         content (slurp path)]
     (spit path (str/replace content
                             #"\{:mvn/version \"[^\"]+\"\}"
@@ -78,7 +78,7 @@
 (defn- check-changelog! [version]
   (let [path    "CHANGELOG.md"
         content (slurp path)
-        entry   (str "[" version "]")]
+        entry   (str "# " version)]
     (when-not (str/includes? content entry)
       (throw (ex-info (str "CHANGELOG.md does not mention " entry
                            ". Add a `## " entry " - YYYY-MM-DD` section manually.")

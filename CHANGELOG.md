@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 This project's version numbers are MAJOR.MINOR.PR-NUMBER by convention.
 Pre 1.0 releases will have breaking changes.
 
+## 0.3.23 - 2026-10-30
+
+* BREAKING: `pgex/records-rank`, To clarify that row counts are *estimates*, I replaced with `:rows` with `:rows_stats_estimate` and `rows_planner_estimate`. You've got to make a choice; pick your poison.
+* Add `key-relationships`, `constraints`, and `triggers` to the data dictionary.
+* Add DDL generation in `resources/sql/ddl.sql` + `postgres-extras-clj.ddl` allowing you to synthesize `CREATE`/`ALTER` DDL from live catalogs.
+* Add pghero diagnostics (10 new queries) in `resources/sql/pghero.sql`
+* Add PostgreSQL-native catalog diagnostics (13 new queries) in `resources/sql/postgres_native.sql`
+* `stats-collector-drift` highlights row count estimates that diverge between planner and statistics collector.
+* `bgwriter-stats` dispatches on PG17+ (`pg_stat_checkpointer`)
+* `wal-stats` targets the stable `pg_stat_wal` columns (PG14+)
+* `read-stats` returns all 44 diagnostic keys
+
 ## [0.2.22] - 2026-10-25
 * New MAJOR.MINOR.PR-NUMBER versioning. start 0.2.x
 * Upgrade clojars dependencies
