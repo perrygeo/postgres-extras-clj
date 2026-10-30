@@ -65,6 +65,22 @@
      :table       "table-with-much-block-io"
      :ratio       0.45}]})
 
+(defn- wait-for
+  "Poll `pred` until it returns a truthy value or `timeout-ms` elapses,
+  returning the predicate's value on the final attempt."
+  [pred timeout-ms]
+  (let [deadline (+ (System/currentTimeMillis) timeout-ms)]
+    (loop []
+      (let [v (pred)]
+        (if (or v (>= (System/currentTimeMillis) deadline))
+          v
+          (do (Thread/sleep 250) (recur)))))))
+
+(defn- drift-row
+  "The stats-collector-drift row for `table`, if present."
+  [table]
+  (some #(when (= table (:table %)) %) (pgex/stats-collector-drift db)))
+
 (deftest smoketest
   (testing
    "Healthy?"
@@ -515,6 +531,13 @@
     (jdbc/execute! db ["INSERT INTO public.drift_test SELECT generate_series(1, 1000)"])
     (jdbc/execute! db ["ANALYZE public.drift_test"])
     (try
+      ;; On PostgreSQL < 15 the statistics collector updates
+      ;; pg_stat_user_tables asynchronously, so poll until the ANALYZE
+      ;; becomes visible before asserting on drift_probability.
+      (is (wait-for #(= 1000 (:rows_stats_estimate (drift-row "drift_test")))
+                    10000)
+          "pg_stat_user_tables should eventually reflect ANALYZE")
+
       (let [rows     (pgex/stats-collector-drift db)
             all-rows (pgex/stats-collector-drift db {:include-system-objects? true})]
         (is (vector? rows))
