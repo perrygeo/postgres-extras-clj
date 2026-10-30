@@ -11,6 +11,7 @@ Pre 1.0 releases will have breaking changes.
 * Add DDL generation in `resources/sql/ddl.sql` + `postgres-extras-clj.ddl` allowing you to synthesize `CREATE`/`ALTER` DDL from live catalogs.
 * Add pghero diagnostics (10 new queries) in `resources/sql/pghero.sql`
 * Add PostgreSQL-native catalog diagnostics (13 new queries) in `resources/sql/postgres_native.sql`
+* `stats-collector-drift` highlights row count estimates that diverge between planner and statistics collector.
 * `bgwriter-stats` dispatches on PG17+ (`pg_stat_checkpointer`)
 * `wal-stats` targets the stable `pg_stat_wal` columns (PG14+)
 * `read-stats` returns all 44 diagnostic keys
