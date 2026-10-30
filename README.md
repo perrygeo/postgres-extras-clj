@@ -56,7 +56,8 @@ of your database, from a data modeling lens.
 | `databases` | List all databases |
 | `functions` | List all function objects in current database |
 | `indexes` | List all index objects in current database |
-| `schemas` | List all shemas in current database |
+| `key-relationships` | List all foreign key relationships, resolved to referencing and referenced columns |
+| `schemas` | List all schemas in current database |
 | `partition-children` | List all child partitions in current database |
 | `partition-parents` | List all parent partition tables in current database |
 | `tables` | List all table objects in current database |

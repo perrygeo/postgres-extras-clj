@@ -147,6 +147,90 @@ ORDER BY
     con.conname;
 
 --
+-- :name key-relationships-raw
+-- :command :query
+-- :result :many
+-- :doc List all foreign key relationships, one row per column pair
+-- A foreign key may span multiple columns, so a single constraint
+-- produces one row per (referencing column, referenced column) pair,
+-- ordered by :position. Reassemble with postgres-extras-clj.core/key-relationships.
+SELECT
+    con.conname::text AS constraint,
+    n.nspname::text AS schema,
+    c.relname::text AS table,
+    a.attname::text AS column,
+    k.position::int AS "position",
+    fn.nspname::text AS foreign_schema,
+    fc.relname::text AS foreign_table,
+    fa.attname::text AS foreign_column,
+    CASE con.confdeltype
+    WHEN 'a'::"char" THEN
+        'NO ACTION'::text
+    WHEN 'r'::"char" THEN
+        'RESTRICT'::text
+    WHEN 'c'::"char" THEN
+        'CASCADE'::text
+    WHEN 'n'::"char" THEN
+        'SET NULL'::text
+    WHEN 'd'::"char" THEN
+        'SET DEFAULT'::text
+    ELSE
+        con.confdeltype::text
+    END AS delete_action,
+    CASE con.confupdtype
+    WHEN 'a'::"char" THEN
+        'NO ACTION'::text
+    WHEN 'r'::"char" THEN
+        'RESTRICT'::text
+    WHEN 'c'::"char" THEN
+        'CASCADE'::text
+    WHEN 'n'::"char" THEN
+        'SET NULL'::text
+    WHEN 'd'::"char" THEN
+        'SET DEFAULT'::text
+    ELSE
+        con.confupdtype::text
+    END AS update_action,
+    CASE con.confmatchtype
+    WHEN 'f'::"char" THEN
+        'FULL'::text
+    WHEN 'p'::"char" THEN
+        'PARTIAL'::text
+    WHEN 's'::"char" THEN
+        'SIMPLE'::text
+    ELSE
+        con.confmatchtype::text
+    END AS match_type,
+    con.condeferrable AS deferrable,
+    con.condeferred AS initially_deferred,
+    con.convalidated AS validated,
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
+        TRUE
+    ELSE
+        FALSE
+    END AS system_object
+FROM
+    pg_catalog.pg_constraint con
+    JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_catalog.pg_class fc ON fc.oid = con.confrelid
+    JOIN pg_catalog.pg_namespace fn ON fn.oid = fc.relnamespace
+    JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS k(fk_attnum, pk_attnum, position) ON TRUE
+    JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid
+        AND a.attnum = k.fk_attnum
+    JOIN pg_catalog.pg_attribute fa ON fa.attrelid = con.confrelid
+        AND fa.attnum = k.pk_attnum
+WHERE
+    con.contype = 'f'::"char"
+    AND c.relkind IN ('r'::"char", 'p'::"char", 'f'::"char")
+ORDER BY
+    n.nspname,
+    c.relname,
+    con.conname,
+    k.position;
+
+--
 -- :name databases
 -- :command :query
 -- :result :many

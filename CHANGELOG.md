@@ -4,11 +4,11 @@ All notable changes to this project will be documented in this file.
 This project's version numbers are MAJOR.MINOR.PR-NUMBER by convention.
 Pre 1.0 releases will have breaking changes.
 
-## [Unreleased]
+## 0.3.23 - 2026-10-30
 
-* Add `constraints` to the data dictionary — lists named constraints (PK/unique/FK/check/exclusion/constraint trigger) with definition, validation, deferrability, FK target, and description. System objects are excluded by default; pass `:include-system-objects? true` to include them.
 * BREAKING: `pgex/records-rank`, To clarify that row counts are *estimates*, I replaced with `:rows` with `:rows_stats_estimate` and `rows_planner_estimate`. You've got to make a choice; pick your poison.
-* Add DDL generation in `resources/sql/ddl.sql` + `postgres-extras-clj.ddl`. You can synthesize `CREATE`/`ALTER` DDL from live catalogs.
+* Add `key-relationships`, `constraints`, and `triggers` to the data dictionary.
+* Add DDL generation in `resources/sql/ddl.sql` + `postgres-extras-clj.ddl` allowing you to synthesize `CREATE`/`ALTER` DDL from live catalogs.
 * Add pghero diagnostics (10 new queries) in `resources/sql/pghero.sql`
 * Add PostgreSQL-native catalog diagnostics (13 new queries) in `resources/sql/postgres_native.sql`
 * `bgwriter-stats` dispatches on PG17+ (`pg_stat_checkpointer`)

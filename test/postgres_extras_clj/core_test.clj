@@ -159,7 +159,7 @@
     ; this just confirms that they are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 11 (count (keys (pgex/read-data-dictionary db))))))
+    (is (= 12 (count (keys (pgex/read-data-dictionary db))))))
 
   (testing
    "system objects are filtered by default and included with the flag"
@@ -290,6 +290,48 @@
 
     (finally
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_con CASCADE"]))))
+
+(deftest key-relationships-test
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_keys"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_keys.parent (id integer PRIMARY KEY, a integer, b integer, UNIQUE (a, b))"])
+    (jdbc/execute! db ["CREATE TABLE pgext_keys.child (id integer PRIMARY KEY, a integer, b integer, CONSTRAINT child_parent_fk FOREIGN KEY (a, b) REFERENCES pgext_keys.parent (a, b) ON DELETE CASCADE ON UPDATE RESTRICT DEFERRABLE INITIALLY DEFERRED)"])
+    (jdbc/execute! db ["CREATE TABLE pgext_keys.simple (parent_id integer REFERENCES pgext_keys.parent (id))"])
+
+    (testing "returns one map per FK constraint with resolved columns"
+      (let [rows      (pgex/key-relationships db)
+            composite (some #(when (= "child_parent_fk" (:constraint %)) %) rows)
+            simple    (some #(when (= "simple" (:table %)) %) rows)]
+        (is composite)
+        (is (= "pgext_keys" (:schema composite)))
+        (is (= "child" (:table composite)))
+        (is (= ["a" "b"] (:columns composite)))
+        (is (= "pgext_keys" (:foreign_schema composite)))
+        (is (= "parent" (:foreign_table composite)))
+        (is (= ["a" "b"] (:foreign_columns composite)))
+        (is (= "CASCADE" (:delete_action composite)))
+        (is (= "RESTRICT" (:update_action composite)))
+        (is (= "SIMPLE" (:match_type composite)))
+        (is (true? (:deferrable composite)))
+        (is (true? (:initially_deferred composite)))
+        (is (true? (:validated composite)))
+        (is (false? (:system_object composite)))
+        (is simple)
+        (is (= ["parent_id"] (:columns simple)))
+        (is (= ["id"] (:foreign_columns simple)))))
+
+    (testing "system objects are filtered by default and included with the flag"
+      (let [all  (pgex/key-relationships db {:include-system-objects? true})
+            user (pgex/key-relationships db)]
+        (is (seq user))
+        (is (every? (complement :system_object) user))
+        ;; the include flag returns at least the user relationships
+        (is (every? (fn [u] (some #(= (:constraint %) (:constraint u)) all)) user))
+        ;; default == include result with system objects removed
+        (is (= (vec (remove :system_object all)) user))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_keys CASCADE"]))))
 
 (deftest pg-stat-statements-based
   (testing "outliers returns the expected columns"

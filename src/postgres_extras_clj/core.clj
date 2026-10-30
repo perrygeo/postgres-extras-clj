@@ -39,6 +39,7 @@
 ;;;
 (declare columns
          constraints-raw
+         key-relationships-raw
          databases
          functions
          indexes
@@ -253,6 +254,55 @@
       rows
       (vec (remove :system_object rows)))))
 
+(defn key-relationships
+  "List all foreign key relationships as ERD-ready edges.
+
+  Each map describes one foreign key constraint:
+    :constraint          — name of the foreign key constraint
+    :schema, :table      — referencing side
+    :columns             — referencing columns, in constraint order
+    :foreign_schema,
+    :foreign_table       — referenced side
+    :foreign_columns     — referenced columns, parallel to :columns
+    :delete_action       — ON DELETE action (NO ACTION, RESTRICT,
+                           CASCADE, SET NULL, SET DEFAULT)
+    :update_action       — ON UPDATE action
+    :match_type          — MATCH type (SIMPLE, FULL, PARTIAL)
+    :deferrable,
+    :initially_deferred,
+    :validated
+
+  Composite foreign keys produce a single relationship map with
+  parallel :columns and :foreign_columns vectors.
+
+  By default, system objects are excluded. Pass :include-system-objects?
+  true to include them."
+  [db & {:keys [include-system-objects?] :or {include-system-objects? false}}]
+  (let [rels (->> (group-by (juxt :schema :table :constraint)
+                            (key-relationships-raw db))
+                  (map (fn [[[schema table constraint] rows]]
+                         (let [rows (sort-by :position rows)
+                               head (first rows)]
+                           {:constraint         constraint
+                            :schema             schema
+                            :table              table
+                            :columns            (mapv :column rows)
+                            :foreign_schema     (:foreign_schema head)
+                            :foreign_table      (:foreign_table head)
+                            :foreign_columns    (mapv :foreign_column rows)
+                            :delete_action      (:delete_action head)
+                            :update_action      (:update_action head)
+                            :match_type         (:match_type head)
+                            :deferrable         (:deferrable head)
+                            :initially_deferred (:initially_deferred head)
+                            :validated          (:validated head)
+                            :system_object      (:system_object head)})))
+                  (sort-by (juxt :schema :table :constraint))
+                  vec)]
+    (if include-system-objects?
+      rels
+      (vec (remove :system_object rels)))))
+
 (defn read-data-dictionary
   "Create a data dictionary summarizing all major objects
   in your PostgreSQL database. Respects SQL COMMENTS,
@@ -268,6 +318,7 @@
             :constraints        (constraints db :include-system-objects? include-system-objects?)
             :functions          (functions db)
             :indexes            (indexes db)
+            :key-relationships  (key-relationships db :include-system-objects? include-system-objects?)
             :schemas            (schemas db)
             :tables             (tables db)
             :triggers           (triggers db)
