@@ -14,7 +14,8 @@
    [clojure.string :as str]
    [clojure.tools.logging :as log]
    [hugsql.core :as hugsql])
-  (:import [org.postgresql.util PSQLException]))
+  (:import [java.net InetAddress]
+           [org.postgresql.util PSQLException]))
 
 ;;;
 ;;; Utils
@@ -100,6 +101,7 @@
          character-sets-pg15
          database-stats
          deprecated-types
+         hba-file-rules
          idle-in-transaction
          io-stats-legacy
          io-stats-pg18
@@ -203,6 +205,54 @@
     (if include-system-objects?
       rows
       (vec (remove :system_object rows)))))
+
+(defn- netmask->prefix-len
+  "Number of leading 1-bits in an IPv4 or IPv6 netmask string."
+  [netmask]
+  (let [bytes (.getAddress (InetAddress/getByName netmask))]
+    (loop [i 0 bits 0]
+      (if (>= i (alength bytes))
+        bits
+        (let [b (aget bytes i)]
+          (if (= (byte -1) b)
+            (recur (inc i) (+ bits 8))
+            (+ bits (Integer/bitCount (int (bit-and 0xFF b))))))))))
+
+(defn- ip-range->cidr
+  "Combine an IP address and netmask into CIDR notation, e.g.
+  \"127.0.0.1\" and \"255.0.0.0\" => \"127.0.0.1/8\"."
+  [address netmask]
+  (str address "/" (netmask->prefix-len netmask)))
+
+(defn hba-security-stance
+  "High-level HBA (client authentication) security stance from pg_hba_file_rules.
+
+  Returns a single map:
+    :trust-rule-count               - number of rules using 'trust' auth
+    :deprecated-password-rule-count - number of rules using 'password' or 'md5'
+                                      auth (upgrade to scram-sha-256)
+    :open-ip-ranges                 - set of CIDR strings for host-based rules
+
+  pg_hba_file_rules is readable only by superusers, so this returns {} when
+  the view is not accessible."
+  [db]
+  (try
+    (let [rows       (hba-file-rules db)
+          host?      #(str/starts-with? (:type %) "host")
+          trust?     #(= "trust" (:auth_method %))
+          deprecated? #(contains? #{"password" "md5"} (:auth_method %))]
+      {:trust-rule-count               (count (filter trust? rows))
+       :deprecated-password-rule-count (count (filter deprecated? rows))
+       :open-ip-ranges                 (->> rows
+                                            (filter host?)
+                                            (keep (fn [{:keys [address netmask]}]
+                                                    (when (and address netmask)
+                                                      (ip-range->cidr address netmask))))
+                                            (into #{}))})
+    (catch PSQLException e
+      (if (= "42501" (.getSQLState e))
+        (do (log/warn (format-psql-exc e)) {})
+        (throw e)))))
 
 ;;;
 ;;; Stats

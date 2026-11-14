@@ -400,6 +400,40 @@
               ;; PG 18+ report byte-level columns directly
                 (is (integer? (:read_bytes read-row)))))))))))
 
+(deftest hba-security-stance-test
+  (testing "hba-security-stance returns a summary map on a superuser connection"
+    (let [raw    (pgex/hba-file-rules db)
+          stance (pgex/hba-security-stance db)]
+      (is (map? stance))
+      (is (= #{:trust-rule-count :deprecated-password-rule-count :open-ip-ranges}
+             (set (keys stance))))
+      (is (integer? (:trust-rule-count stance)))
+      (is (integer? (:deprecated-password-rule-count stance)))
+      (is (set? (:open-ip-ranges stance)))
+      (is (every? string? (:open-ip-ranges stance)))
+      ;; counts cross-check against the raw parsed rules
+      (is (= (count (filter #(= "trust" (:auth_method %)) raw))
+             (:trust-rule-count stance)))
+      (is (= (count (filter #(contains? #{"password" "md5"} (:auth_method %)) raw))
+             (:deprecated-password-rule-count stance)))
+      ;; every host rule with an address+netmask yields a CIDR in the set
+      (let [host-with-range (filter #(and (str/starts-with? (:type %) "host")
+                                          (:address %)
+                                          (:netmask %))
+                                    raw)]
+        (is (= (count (distinct (map (juxt :address :netmask) host-with-range)))
+               (count (:open-ip-ranges stance))))
+        (is (every? #(re-matches #".+/[0-9]+" %) (:open-ip-ranges stance))))))
+
+  (testing "hba-security-stance returns {} when pg_hba_file_rules is not accessible"
+    (jdbc/execute! db ["CREATE ROLE pgext_hba_nonsuper NOLOGIN"])
+    (try
+      (with-open [conn (jdbc/get-connection db)]
+        (jdbc/execute! conn ["SET ROLE pgext_hba_nonsuper"])
+        (is (= {} (pgex/hba-security-stance conn))))
+      (finally
+        (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_hba_nonsuper"])))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"

@@ -709,3 +709,23 @@ ORDER BY
     backend_type,
     object,
     context;
+
+-- :name hba-file-rules
+-- :command :query
+-- :result :many
+-- :doc Parsed client-authentication (pg_hba.conf) rules from pg_hba_file_rules.
+-- Only successfully parsed rules are returned (error IS NULL). The view is
+-- readable only by superusers, so this query fails with SQLSTATE 42501 for
+-- other roles.
+/* HUG_PSQL_EXTRAS: Parsed client-authentication (pg_hba.conf) rules from pg_hba_file_rules. */
+SELECT
+    type,
+    auth_method,
+    address,
+    netmask
+FROM
+    pg_hba_file_rules
+WHERE
+    error IS NULL
+ORDER BY
+    line_number;
