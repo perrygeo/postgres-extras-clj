@@ -534,3 +534,50 @@ FROM
     pg_database d
 ORDER BY
     d.datname;
+
+-- :name toast
+-- :command :query
+-- :result :many
+-- :doc TOAST tables with their sizes and the columns eligible for out-of-line storage.
+-- toast_size_bytes is the total TOAST relation (chunk data + index),
+-- toast_data_size_bytes is just the out-of-line chunk storage, and
+-- toast_columns lists every non-PLAIN (toastable) column with its storage
+-- strategy: external (never compressed, moved out-of-line when oversized),
+-- extended (compressed, moved out-of-line only if still too large), or main
+-- (kept inline unless the row itself overflows the page).
+/* HUG_PSQL_EXTRAS: TOAST tables with their sizes and the columns eligible for out-of-line storage. */
+SELECT
+    n.nspname AS schema,
+    c.relname AS table,
+    t.relname AS toast_table,
+    pg_total_relation_size(t.oid) AS toast_size_bytes,
+    pg_relation_size(t.oid) AS toast_data_size_bytes,
+    pg_indexes_size(t.oid) AS toast_index_size_bytes,
+    (
+        SELECT
+            string_agg(a.attname || ' (' || CASE a.attstorage
+                WHEN 'e' THEN
+                    'external'
+                WHEN 'x' THEN
+                    'extended'
+                WHEN 'm' THEN
+                    'main'
+            END || ')', ', ' ORDER BY a.attnum)
+        FROM
+            pg_attribute a
+        WHERE
+            a.attrelid = c.oid
+            AND a.attnum > 0
+            AND NOT a.attisdropped
+            AND a.attstorage <> 'p') AS toast_columns
+FROM
+    pg_class c
+    INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+    INNER JOIN pg_class t ON t.oid = c.reltoastrelid
+WHERE
+    c.relkind IN ('r', 'm')
+    AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND n.nspname !~ '^pg_toast'
+    AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+ORDER BY
+    toast_size_bytes DESC;

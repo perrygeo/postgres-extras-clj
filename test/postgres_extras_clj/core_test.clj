@@ -231,6 +231,65 @@
         (is (contains? #{"libc" "icu" "builtin"} provider))
         (is (nil? provider))))))
 
+(deftest toast-test
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_toast"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_toast.t (
+        id integer PRIMARY KEY,
+        big_text text,
+        big_bytea bytea,
+        note text)"])
+    (jdbc/execute! db ["ALTER TABLE pgext_toast.t ALTER COLUMN big_bytea SET STORAGE EXTERNAL"])
+    (jdbc/execute! db ["ALTER TABLE pgext_toast.t ALTER COLUMN note SET STORAGE MAIN"])
+    (jdbc/execute! db ["INSERT INTO pgext_toast.t
+        SELECT i, repeat(md5(i::text), 1000), repeat('x', 100000)::bytea, repeat('z', 10000)
+        FROM generate_series(1, 30) i"])
+
+    (testing "toast returns one row per TOAST table with the expected shape"
+      (let [rows (pgex/toast db)]
+        (is (vector? rows))
+        (is (seq rows))
+        (is (every? (fn [row]
+                      (and (string? (:schema row))
+                           (string? (:table row))
+                           (string? (:toast_table row))
+                           (integer? (:toast_size_bytes row))
+                           (integer? (:toast_data_size_bytes row))
+                           (integer? (:toast_index_size_bytes row))
+                           (string? (:toast_columns row))))
+                    rows))))
+
+    (testing "toast identifies the table, its TOAST table, and the toastable columns"
+      (let [row (some #(when (and (= "pgext_toast" (:schema %))
+                                  (= "t" (:table %)))
+                         %)
+                      (pgex/toast db))]
+        (is row)
+        (is (re-find #"^pg_toast_\d+$" (:toast_table row)))
+        ;; out-of-line storage actually happened
+        (is (pos? (:toast_data_size_bytes row)))
+        (is (>= (:toast_size_bytes row) (:toast_data_size_bytes row)))
+        (is (pos? (:toast_index_size_bytes row)))
+        ;; toastable columns are listed with their storage strategy
+        (is (str/includes? (:toast_columns row) "big_text (extended)"))
+        (is (str/includes? (:toast_columns row) "big_bytea (external)"))
+        (is (str/includes? (:toast_columns row) "note (main)"))
+        ;; the PLAIN column is never listed
+        (is (not (str/includes? (:toast_columns row) "id (")))))
+
+    (testing "toast lists a TOAST table with no out-of-line data"
+      (jdbc/execute! db ["CREATE TABLE pgext_toast.empty_t (id integer PRIMARY KEY, note text)"])
+      (let [row (some #(when (and (= "pgext_toast" (:schema %))
+                                  (= "empty_t" (:table %)))
+                         %)
+                      (pgex/toast db))]
+        (is row)
+        (is (zero? (:toast_data_size_bytes row)))
+        (is (= "note (extended)" (:toast_columns row)))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_toast CASCADE"]))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"

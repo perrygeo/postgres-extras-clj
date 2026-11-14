@@ -106,6 +106,7 @@
          sequence-origin
          stats-collector-drift-raw
          tables-without-primary-key
+         toast
          unindexed-foreign-keys
          unlogged-tables
          wal-archiver
