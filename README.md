@@ -1,4 +1,5 @@
 # postgres-extras-clj
+[![Clojars Project](https://img.shields.io/clojars/v/com.github.perrygeo/postgres-extras-clj.svg)](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
 
 A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 
@@ -6,11 +7,10 @@ A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 com.github.perrygeo/postgres-extras-clj {:mvn/version "0.3.23"}
 ```
 
-* [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
-* [Github](https://github.com/perrygeo/postgres-extras-clj)
 * [Documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
-* [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
 * [Example Notebook](https://perrygeo.github.io/postgres-extras-clj/)
+* [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
+* [Github](https://github.com/perrygeo/postgres-extras-clj)
 
 
 ## 🐘 Motivation
