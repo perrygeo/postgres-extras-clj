@@ -581,3 +581,59 @@ WHERE
     AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
 ORDER BY
     toast_size_bytes DESC;
+
+-- :name row-level-security
+-- :command :query
+-- :result :many
+-- :doc Row level security (RLS) policies with per-table enablement flags.
+-- One row per policy; tables with RLS enabled but zero policies are not
+-- represented (a locked-down table with no policies is also worth auditing,
+-- but that is a separate signal from a defined policy).
+/* HUG_PSQL_EXTRAS: Row level security (RLS) policies with per-table enablement flags. */
+SELECT
+    n.nspname AS schema,
+    c.relname AS table,
+    p.polname AS policy,
+    CASE p.polcmd
+        WHEN 'r' THEN
+            'SELECT'
+        WHEN 'a' THEN
+            'INSERT'
+        WHEN 'w' THEN
+            'UPDATE'
+        WHEN 'd' THEN
+            'DELETE'
+        WHEN '*' THEN
+            'ALL'
+    END AS command,
+    CASE WHEN p.polpermissive THEN
+        'PERMISSIVE'
+    ELSE
+        'RESTRICTIVE'
+    END AS permissive,
+    array_to_string((
+        SELECT
+            array_agg(CASE WHEN r.role_oid = 0 THEN
+                'public'
+            ELSE
+                pg_get_userbyid(r.role_oid)
+            END
+            ORDER BY r.role_oid)
+        FROM
+            unnest(p.polroles) AS r(role_oid)), ', ') AS roles,
+    pg_get_expr(p.polqual, p.polrelid) AS using_expression,
+    pg_get_expr(p.polwithcheck, p.polrelid) AS with_check_expression,
+    c.relrowsecurity AS rls_enabled,
+    c.relforcerowsecurity AS rls_forced
+FROM
+    pg_policy p
+    INNER JOIN pg_class c ON c.oid = p.polrelid
+    INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE
+    n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND n.nspname !~ '^pg_toast'
+    AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+ORDER BY
+    n.nspname,
+    c.relname,
+    p.polname;

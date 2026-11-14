@@ -103,6 +103,7 @@
          idle-in-transaction
          replication-stats
          roles
+         row-level-security
          sequence-origin
          stats-collector-drift-raw
          tables-without-primary-key

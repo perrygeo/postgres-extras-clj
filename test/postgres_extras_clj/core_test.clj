@@ -290,6 +290,70 @@
     (finally
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_toast CASCADE"]))))
 
+(deftest row-level-security-test
+  (testing "row-level-security is empty when no policies are defined"
+    (is (empty? (pgex/row-level-security db))))
+
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_rls"])
+  (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_rls_reader"])
+  (try
+    (jdbc/execute! db ["CREATE ROLE pgext_rls_reader"])
+    (jdbc/execute! db ["CREATE TABLE pgext_rls.docs (
+        id integer PRIMARY KEY,
+        owner text,
+        body text)"])
+    (jdbc/execute! db ["CREATE POLICY docs_all ON pgext_rls.docs USING (true) WITH CHECK (true)"])
+    (jdbc/execute! db ["CREATE POLICY docs_owner_select ON pgext_rls.docs FOR SELECT TO pgext_rls_reader USING (owner = current_user)"])
+    (jdbc/execute! db ["CREATE POLICY docs_restrictive ON pgext_rls.docs AS RESTRICTIVE FOR SELECT TO pgext_rls_reader USING (body IS NOT NULL)"])
+    (jdbc/execute! db ["ALTER TABLE pgext_rls.docs ENABLE ROW LEVEL SECURITY"])
+    (jdbc/execute! db ["ALTER TABLE pgext_rls.docs FORCE ROW LEVEL SECURITY"])
+
+    (testing "row-level-security returns one row per policy with the expected shape"
+      (let [rows (filter #(= "pgext_rls" (:schema %))
+                         (pgex/row-level-security db))]
+        (is (= 3 (count rows)))
+        (is (every? (fn [row]
+                      (and (string? (:schema row))
+                           (string? (:table row))
+                           (string? (:policy row))
+                           (contains? #{"SELECT" "INSERT" "UPDATE" "DELETE" "ALL"} (:command row))
+                           (contains? #{"PERMISSIVE" "RESTRICTIVE"} (:permissive row))
+                           (string? (:roles row))
+                           (or (nil? (:using_expression row)) (string? (:using_expression row)))
+                           (or (nil? (:with_check_expression row)) (string? (:with_check_expression row)))
+                           (boolean? (:rls_enabled row))
+                           (boolean? (:rls_forced row))))
+                    rows))))
+
+    (testing "row-level-security reports commands, roles, and RLS flags"
+      (let [rows      (filter #(= "pgext_rls" (:schema %))
+                              (pgex/row-level-security db))
+            by-policy (into {} (map (juxt :policy identity) rows))]
+        ;; the permissive ALL policy targets public and has both expressions
+        (let [all-p (get by-policy "docs_all")]
+          (is all-p)
+          (is (= "ALL" (:command all-p)))
+          (is (= "PERMISSIVE" (:permissive all-p)))
+          (is (= "public" (:roles all-p)))
+          (is (= "true" (:using_expression all-p)))
+          (is (= "true" (:with_check_expression all-p))))
+        ;; the SELECT policy targets a specific role with a USING qualifier
+        (let [sel (get by-policy "docs_owner_select")]
+          (is sel)
+          (is (= "SELECT" (:command sel)))
+          (is (= "PERMISSIVE" (:permissive sel)))
+          (is (= "pgext_rls_reader" (:roles sel)))
+          (is (str/includes? (:using_expression sel) "owner"))
+          (is (nil? (:with_check_expression sel))))
+        ;; the RESTRICTIVE policy is flagged as such
+        (is (= "RESTRICTIVE" (:permissive (get by-policy "docs_restrictive"))))
+        ;; RLS is enabled and forced on the table
+        (is (every? #(and (true? (:rls_enabled %)) (true? (:rls_forced %))) rows))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_rls CASCADE"])
+      (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_rls_reader"]))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"
