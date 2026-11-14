@@ -729,3 +729,49 @@ WHERE
     error IS NULL
 ORDER BY
     line_number;
+
+-- :name tablespaces
+-- :command :query
+-- :result :many
+-- :doc Tablespaces with owner, filesystem location, size, and options.
+/* HUG_PSQL_EXTRAS: Tablespaces with owner, filesystem location, size, and options. */
+SELECT
+    t.spcname AS tablespace,
+    pg_get_userbyid(t.spcowner) AS owner,
+    pg_tablespace_location(t.oid) AS location,
+    pg_tablespace_size(t.oid) AS size_bytes,
+    array_to_string(t.spcoptions, ', ') AS options
+FROM
+    pg_tablespace t
+ORDER BY
+    t.spcname;
+
+-- :name os-cpu-mem
+-- :command :query
+-- :result :one
+-- :doc Best-effort OS CPU and memory details from Linux /proc files.
+-- Reading files outside the data directory requires superuser (or the
+-- pg_read_server_files role), so this query fails with SQLSTATE 42501 for
+-- other roles and with SQLSTATE 58P01 on non-Linux hosts without /proc.
+/* HUG_PSQL_EXTRAS: Best-effort OS CPU and memory details from Linux /proc files. */
+SELECT
+    pg_read_file('/proc/cpuinfo') AS cpuinfo,
+    pg_read_file('/proc/meminfo') AS meminfo,
+    version() AS version;
+
+-- :name os-disks
+-- :command :query
+-- :result :many
+-- :doc Best-effort OS block devices and sizes from Linux /sys/block.
+-- loop devices are excluded (file-backed, not physical disks). The size
+-- file is reported in 512-byte sectors, so it is converted to bytes.
+/* HUG_PSQL_EXTRAS: Best-effort OS block devices and sizes from Linux /sys/block. */
+SELECT
+    b AS device,
+    (pg_read_file('/sys/block/' || b || '/size'))::bigint * 512 AS size_bytes
+FROM
+    pg_ls_dir('/sys/block') AS b
+WHERE
+    b NOT LIKE 'loop%'
+ORDER BY
+    b;

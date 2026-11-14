@@ -434,6 +434,77 @@
       (finally
         (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_hba_nonsuper"])))))
 
+(deftest tablespaces-test
+  (testing "tablespaces lists the built-in tablespaces with the expected shape"
+    (let [rows (pgex/tablespaces db)]
+      (is (vector? rows))
+      (is (>= (count rows) 2))
+      (is (every? (fn [row]
+                    (and (string? (:tablespace row))
+                         (string? (:owner row))
+                         (or (nil? (:location row)) (string? (:location row)))
+                         (integer? (:size_bytes row))
+                         (pos? (:size_bytes row))
+                         (or (nil? (:options row)) (string? (:options row)))))
+                  rows))
+      (is (some #(= "pg_default" (:tablespace %)) rows))
+      (is (some #(= "pg_global" (:tablespace %)) rows))))
+
+  (testing "tablespaces reports a custom tablespace with location, size, and options"
+    (let [dir (java.nio.file.Files/createTempDirectory
+               "pgext-ts-"
+               (make-array java.nio.file.attribute.FileAttribute 0))]
+      (try
+        (jdbc/execute! db [(str "CREATE TABLESPACE pgext_ts LOCATION '" dir "' WITH (seq_page_cost = 1.1)")])
+        (jdbc/execute! db ["CREATE TABLE pgext_ts_table (id integer) TABLESPACE pgext_ts"])
+        (jdbc/execute! db ["INSERT INTO pgext_ts_table SELECT generate_series(1, 1000)"])
+        (let [row (some #(when (= "pgext_ts" (:tablespace %)) %) (pgex/tablespaces db))]
+          (is row)
+          (is (= "postgres" (:owner row)))
+          (is (= (str dir) (:location row)))
+          (is (pos? (:size_bytes row)))
+          (is (str/includes? (:options row) "seq_page_cost=1.1")))
+        (finally
+          (jdbc/execute! db ["DROP TABLE IF EXISTS pgext_ts_table"])
+          (jdbc/execute! db ["DROP TABLESPACE IF EXISTS pgext_ts"])
+          (java.nio.file.Files/deleteIfExists dir))))))
+
+(deftest compute-resources-test
+  (testing "compute-resources returns an OS resource summary on a superuser connection"
+    (let [resources (pgex/compute-resources db)
+          linux?    (str/includes? (str/lower-case (System/getProperty "os.name")) "linux")]
+      (is (map? resources))
+      (if linux?
+        (do
+          (is (= #{:cpu-cores :cpu-architecture :memory-bytes :disks}
+                 (set (keys resources))))
+          (is (integer? (:cpu-cores resources)))
+          (is (pos? (:cpu-cores resources)))
+          (is (string? (:cpu-architecture resources)))
+          (is (seq (:cpu-architecture resources)))
+          (is (re-matches #"[A-Za-z0-9_]+" (:cpu-architecture resources)))
+          (is (integer? (:memory-bytes resources)))
+          (is (pos? (:memory-bytes resources)))
+          (is (vector? (:disks resources)))
+          (is (seq (:disks resources)))
+          (is (every? (fn [disk]
+                        (and (string? (:device disk))
+                             (seq (:device disk))
+                             (integer? (:size_bytes disk))
+                             (pos? (:size_bytes disk))))
+                      (:disks resources))))
+        ;; /proc and /sys are Linux-only, so non-Linux hosts get {}
+        (is (= {} resources)))))
+
+  (testing "compute-resources returns {} when /proc and /sys are not accessible"
+    (jdbc/execute! db ["CREATE ROLE pgext_res_nonsuper NOLOGIN"])
+    (try
+      (with-open [conn (jdbc/get-connection db)]
+        (jdbc/execute! conn ["SET ROLE pgext_res_nonsuper"])
+        (is (= {} (pgex/compute-resources conn))))
+      (finally
+        (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_res_nonsuper"])))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"
@@ -454,7 +525,7 @@
 
   (testing
    "active database connections, at least one since we're asking."
-    (is (some? (pgex/connections db))))
+    (is (some? (pgex/connections db)))))
 
   ;; The following calls are covered by the read-stats fn
   ; (pgex/all-locks db) | Queries with active locks |
@@ -485,7 +556,7 @@
 
   ; Not sure how we'd test this, TODO
   ; (pgex/kill-all! db)
-  )
+
 (deftest data-dict
 
   (testing
@@ -515,7 +586,7 @@
       (is (every? (complement :system_object) (:tables dd-default)))
       (is (every? (complement :system_object) (:columns dd-default)))
       (is (every? (complement :system_object) (:constraints dd-default)))
-      (is (some :system_object (:constraints dd-all)))))
+      (is (some :system_object (:constraints dd-all))))))
 
   ; The following calls are covered by the read-data-dictionary fn
   ; | (columns db) | List all database column objects |
@@ -528,7 +599,6 @@
   ; | (partition-parents db) | List all parent partitions in current database |
   ; | (tables db) | List all table objects in current database |
   ; | (views db) | List all view objects in current database |
-  )
 
 (deftest triggers-data-dictionary
   (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_trig"])

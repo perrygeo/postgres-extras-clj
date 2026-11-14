@@ -105,12 +105,15 @@
          idle-in-transaction
          io-stats-legacy
          io-stats-pg18
+         os-cpu-mem
+         os-disks
          replication-stats
          roles
          row-level-security
          sequence-origin
          stats-collector-drift-raw
          tables-without-primary-key
+         tablespaces
          toast
          unindexed-foreign-keys
          unlogged-tables
@@ -251,6 +254,74 @@
                                             (into #{}))})
     (catch PSQLException e
       (if (= "42501" (.getSQLState e))
+        (do (log/warn (format-psql-exc e)) {})
+        (throw e)))))
+
+(defn- cpuinfo-field
+  "Value of a colon-delimited field within one /proc/cpuinfo block, e.g.
+  (cpuinfo-field block \"cpu cores\") => \"8\"."
+  [block field]
+  (some (fn [line]
+          (when-let [[_ v] (re-matches (re-pattern (str field "\\s*:\\s*(.*)")) line)]
+            (str/trim v)))
+        (str/split-lines block)))
+
+(defn- cpuinfo->cores
+  "Physical CPU core count from /proc/cpuinfo text.
+  Uses the per-socket `cpu cores` field times the number of sockets when
+  available; falls back to the number of processor blocks (logical CPUs)."
+  [cpuinfo]
+  (let [blocks (->> (str/split cpuinfo #"\n\s*\n")
+                    (remove str/blank?))]
+    (if-let [cores (->> blocks
+                        (keep #(some-> (cpuinfo-field % "cpu cores") parse-long))
+                        not-empty)]
+      (let [sockets (->> blocks
+                         (keep #(cpuinfo-field % "physical id"))
+                         distinct
+                         count)]
+        (* (apply max cores) (max 1 sockets)))
+      (count blocks))))
+
+(defn- meminfo->total-bytes
+  "Total physical memory in bytes from /proc/meminfo text (MemTotal is in kB)."
+  [meminfo]
+  (when-let [line (some #(when (str/starts-with? % "MemTotal:")
+                          %)
+                        (str/split-lines meminfo))]
+    (let [kb (parse-long (-> (second (str/split line #":"))
+                             (str/replace #"kB" "")
+                             str/trim))]
+      (* kb 1024))))
+
+(defn- version->arch
+  "CPU architecture from the PostgreSQL version string, e.g.
+  \"PostgreSQL 18.6 on x86_64-pc-linux-gnu, ...\" => \"x86_64\"."
+  [version]
+  (second (re-find #" on ([A-Za-z0-9_]+)-" version)))
+
+(defn compute-resources
+  "Best-effort OS-level compute resources from Linux /proc and /sys.
+
+  Returns a single map:
+    :cpu-cores        - physical CPU core count (logical CPUs if unknown)
+    :cpu-architecture - e.g. \"x86_64\"
+    :memory-bytes     - total physical memory in bytes
+    :disks            - vector of {:device name :size_bytes n}
+
+  Reading these files requires superuser (or pg_read_server_files), so this
+  returns {} when they are not accessible (SQLSTATE 42501) or when the Linux
+  pseudo-files are absent (SQLSTATE 58P01)."
+  [db]
+  (try
+    (let [{:keys [cpuinfo meminfo version]} (os-cpu-mem db)
+          disks (os-disks db)]
+      {:cpu-cores        (cpuinfo->cores cpuinfo)
+       :cpu-architecture (version->arch version)
+       :memory-bytes     (meminfo->total-bytes meminfo)
+       :disks            disks})
+    (catch PSQLException e
+      (if (contains? #{"42501" "58P01"} (.getSQLState e))
         (do (log/warn (format-psql-exc e)) {})
         (throw e)))))
 
