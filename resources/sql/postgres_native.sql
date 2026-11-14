@@ -420,3 +420,75 @@ FROM
     drift
 ORDER BY
     total_size_bytes DESC;
+
+-- :name deprecated-types
+-- :command :query
+-- :result :many
+-- :doc Columns using deprecated or discouraged data types (money, serial, char,
+-- length-limited varchar, time and timestamp without time zone).
+/* HUG_PSQL_EXTRAS: Columns using deprecated or discouraged data types (money, serial, char, length-limited varchar, time and timestamp without time zone). */
+WITH deprecated AS (
+    SELECT
+        n.nspname AS schema,
+        c.relname AS relname,
+        a.attname AS attname,
+        format_type(a.atttypid, a.atttypmod) AS data_type,
+        CASE WHEN t.typname = 'money' THEN
+            'money'
+        WHEN t.typname = 'bpchar' THEN
+            'char'
+        WHEN t.typname = 'varchar'
+            AND a.atttypmod <> -1 THEN
+            'varchar'
+        WHEN t.typname = 'time' THEN
+            'time'
+        WHEN t.typname = 'timestamp' THEN
+            'timestamp'
+        WHEN t.typname IN ('int2', 'int4', 'int8')
+            AND a.attidentity = ''
+            AND ad.adbin IS NOT NULL
+            AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval(%' THEN
+            'serial'
+        END AS deprecated_type
+    FROM
+        pg_attribute a
+        INNER JOIN pg_class c ON c.oid = a.attrelid
+        INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+        INNER JOIN pg_type t ON t.oid = a.atttypid
+        LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid
+            AND ad.adnum = a.attnum
+    WHERE
+        a.attnum > 0
+        AND NOT a.attisdropped
+        AND c.relkind IN ('r', 'p', 'm')
+        AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname !~ '^pg_toast'
+        AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)')
+SELECT
+    schema,
+    relname AS table,
+    attname AS column,
+    data_type,
+    deprecated_type,
+    CASE deprecated_type
+        WHEN 'money' THEN
+            'use numeric'
+        WHEN 'char' THEN
+            'use text or varchar'
+        WHEN 'varchar' THEN
+            'use text with a length CHECK'
+        WHEN 'time' THEN
+            'use timetz or timestamptz'
+        WHEN 'timestamp' THEN
+            'use timestamptz'
+        WHEN 'serial' THEN
+            'use GENERATED ... AS IDENTITY'
+    END AS recommendation
+FROM
+    deprecated
+WHERE
+    deprecated_type IS NOT NULL
+ORDER BY
+    schema,
+    relname,
+    attname;

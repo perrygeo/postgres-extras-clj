@@ -97,6 +97,7 @@
          bgwriter-stats-legacy
          bgwriter-stats-pg17
          database-stats
+         deprecated-types
          idle-in-transaction
          replication-stats
          roles

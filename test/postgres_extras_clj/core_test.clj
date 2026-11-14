@@ -157,6 +157,55 @@
         (is (= "8192" (:value row)))
         (is (= "session" (:source row)))))))
 
+(deftest deprecated-types-test
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_deprecated"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_deprecated.t (
+        id serial PRIMARY KEY,
+        amt money,
+        code char(10),
+        vc varchar(50),
+        vc2 varchar,
+        t time,
+        ts timestamp,
+        tz timestamptz,
+        ok text,
+        n numeric,
+        id2 bigint GENERATED ALWAYS AS IDENTITY)"])
+
+    (testing "deprecated-types flags deprecated column types with a recommendation"
+      (let [rows   (filter #(= "pgext_deprecated" (:schema %))
+                           (pgex/deprecated-types db))
+            by-col (into {} (map (juxt :column :deprecated_type) rows))]
+        (is (= "serial" (get by-col "id")))
+        (is (= "money" (get by-col "amt")))
+        (is (= "char" (get by-col "code")))
+        (is (= "varchar" (get by-col "vc")))
+        (is (= "time" (get by-col "t")))
+        (is (= "timestamp" (get by-col "ts")))
+        ;; non-deprecated columns are not flagged
+        (is (nil? (get by-col "vc2")))
+        (is (nil? (get by-col "tz")))
+        (is (nil? (get by-col "ok")))
+        (is (nil? (get by-col "n")))
+        (is (nil? (get by-col "id2")))))
+
+    (testing "deprecated-types rows have the expected shape"
+      (let [rows (pgex/deprecated-types db)]
+        (is (vector? rows))
+        (is (seq rows))
+        (is (every? (fn [row]
+                      (and (string? (:schema row))
+                           (string? (:table row))
+                           (string? (:column row))
+                           (string? (:data_type row))
+                           (string? (:deprecated_type row))
+                           (string? (:recommendation row))))
+                    rows))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_deprecated CASCADE"]))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"
