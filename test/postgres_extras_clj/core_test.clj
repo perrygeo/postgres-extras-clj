@@ -206,6 +206,31 @@
     (finally
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_deprecated CASCADE"]))))
 
+(deftest character-sets-test
+  (testing "character-sets returns per-database encoding/locale/collation info"
+    (let [rows (pgex/character-sets db)]
+      (is (vector? rows))
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:database row))
+                         (string? (:encoding row))
+                         (string? (:lc_collate row))
+                         (string? (:lc_ctype row))
+                         (or (nil? (:collation_provider row))
+                             (string? (:collation_provider row)))
+                         (or (nil? (:collation_version row))
+                             (string? (:collation_version row)))))
+                  rows))
+      ;; the current database is listed
+      (is (some #(= "postgres" (:database %)) rows))))
+
+  (testing "collation_provider is populated on PostgreSQL >= 15 and nil before"
+    (let [vnum     (:version_num (pgex/server-version-num db))
+          provider (:collation_provider (first (pgex/character-sets db)))]
+      (if (>= vnum 150000)
+        (is (contains? #{"libc" "icu" "builtin"} provider))
+        (is (nil? provider))))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"

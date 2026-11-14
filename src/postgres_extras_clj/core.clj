@@ -96,6 +96,8 @@
          autovacuum-disabled
          bgwriter-stats-legacy
          bgwriter-stats-pg17
+         character-sets-pg14
+         character-sets-pg15
          database-stats
          deprecated-types
          idle-in-transaction
@@ -155,6 +157,16 @@
   (if (>= (pg-version-num db) 170000)
     (bgwriter-stats-pg17 db)
     (bgwriter-stats-legacy db)))
+
+(defn character-sets
+  "Per-database encoding, locale, and collation.
+  Returns one map per database with :database, :encoding, :lc_collate,
+  :lc_ctype, :collation_provider (nil on PostgreSQL < 15), and
+  :collation_version."
+  [db]
+  (if (>= (pg-version-num db) 150000)
+    (character-sets-pg15 db)
+    (character-sets-pg14 db)))
 
 (defn stats-collector-drift
   "Row-count drift between the planner estimate (reltuples)

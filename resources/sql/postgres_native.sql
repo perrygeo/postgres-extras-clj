@@ -492,3 +492,45 @@ ORDER BY
     schema,
     relname,
     attname;
+
+-- :name character-sets-pg14
+-- :command :query
+-- :result :many
+-- :doc Per-database encoding, locale, and collation (PostgreSQL < 15, before
+-- the ICU locale provider and database-level collation version tracking).
+/* HUG_PSQL_EXTRAS: Per-database encoding, locale, and collation (PostgreSQL < 15, before the ICU locale provider and database-level collation version tracking). */
+SELECT
+    d.datname AS database,
+    pg_encoding_to_char(d.encoding) AS encoding,
+    d.datcollate AS lc_collate,
+    d.datctype AS lc_ctype,
+    NULL::text AS collation_provider,
+    NULL::text AS collation_version
+FROM
+    pg_database d
+ORDER BY
+    d.datname;
+
+-- :name character-sets-pg15
+-- :command :query
+-- :result :many
+-- :doc Per-database encoding, locale, and collation (PostgreSQL >= 15).
+/* HUG_PSQL_EXTRAS: Per-database encoding, locale, and collation (PostgreSQL >= 15). */
+SELECT
+    d.datname AS database,
+    pg_encoding_to_char(d.encoding) AS encoding,
+    d.datcollate AS lc_collate,
+    d.datctype AS lc_ctype,
+    CASE d.datlocprovider
+        WHEN 'c' THEN
+            'libc'
+        WHEN 'i' THEN
+            'icu'
+        WHEN 'b' THEN
+            'builtin'
+    END AS collation_provider,
+    d.datcollversion AS collation_version
+FROM
+    pg_database d
+ORDER BY
+    d.datname;
