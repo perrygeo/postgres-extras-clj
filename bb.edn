@@ -6,7 +6,12 @@
 
   test
   {:doc  "Run the test suite against all currently supported PostgreSQL versions"
+   :depends [test:clean]
    :task (clojure "-X:test")}
+
+  test:clean
+  {:doc  "Remove the embedded-postgres binary cache. Re-extracted locally from ~/.m2 on the next run (no network download)."
+   :task (shell "rm" "-rf" "/tmp/embedded-pg")}
 
   lint
   {:doc  "Run clj-kondo linting over the project sources"
