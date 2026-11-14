@@ -318,17 +318,36 @@ WHERE
 -- :name db-settings
 -- :command :query
 -- :result :many
--- :doc Values of selected PostgreSQL settings
-/* HUG_PSQL_EXTRAS: Values of selected PostgreSQL settings */
+-- :doc Values of selected PostgreSQL settings, including whether each one is
+-- running the compiled-in default (is_default) and the log collection settings
+-- needed to construct a log analyzer (e.g. pgbadger) invocation.
+/* HUG_PSQL_EXTRAS: Values of selected PostgreSQL settings, including whether each one is running the compiled-in default and the log collection settings needed to construct a log analyzer (e.g. pgbadger) invocation. */
 SELECT
     name AS setting,
     setting AS value,
     unit,
+    boot_val,
+    (setting = boot_val) AS is_default,
+    source,
     short_desc
 FROM
     pg_settings
 WHERE
-    name IN ('max_connections', 'shared_buffers', 'effective_cache_size', 'maintenance_work_mem', 'checkpoint_completion_target', 'wal_buffers', 'default_statistics_target', 'random_page_cost', 'effective_io_concurrency', 'work_mem', 'min_wal_size', 'max_wal_size');
+    name IN (
+        'max_connections', 'shared_buffers', 'effective_cache_size',
+        'maintenance_work_mem', 'checkpoint_completion_target',
+        'wal_buffers', 'default_statistics_target', 'random_page_cost',
+        'effective_io_concurrency', 'work_mem', 'min_wal_size',
+        'max_wal_size', 'listen_addresses', 'port', 'ssl', 'wal_level',
+        'archive_mode', 'autovacuum', 'max_parallel_workers', 'timezone',
+        'synchronous_commit', 'log_destination', 'logging_collector',
+        'log_directory', 'log_filename', 'log_line_prefix',
+        'log_min_duration_statement', 'log_statement', 'log_connections',
+        'log_disconnections', 'log_lock_waits', 'log_checkpoints',
+        'log_autovacuum_min_duration', 'log_rotation_age',
+        'log_rotation_size', 'log_truncate_on_rotation', 'log_timezone')
+ORDER BY
+    name;
 
 -- :name duplicate-indexes
 -- :command :query

@@ -103,7 +103,59 @@
   (testing
    "diagnostic-fns with an IO-laden table fails the :ratio predicate"
     (is (some? (pgex/diagnose (mock-stats-blockio)
-                              :diagnostic-fns test-fns)))))
+                              :diagnostic-fns test-fns))))
+
+  (testing
+   "duplicate-indexes produces a warning without throwing"
+    (let [stats {:duplicate-indexes
+                 [{:size 14188544
+                   :idx1 "idx_users_email"
+                   :idx2 "idx_users_email_dup"}]}
+          warnings (pgex/diagnose-warnings stats)]
+      (is (= 1 (count warnings)))
+      (is (= :duplicate-indexes (:diagnostic (first warnings))))
+      (is (str/includes? (:message (first warnings))
+                         "idx_users_email duplicates idx_users_email_dup")))))
+
+(deftest db-settings-test
+  (testing "db-settings returns a seq with the expected shape"
+    (let [rows (pgex/db-settings db)]
+      (is (vector? rows))
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:setting row))
+                         (string? (:value row))
+                         (string? (:boot_val row))
+                         (boolean? (:is_default row))
+                         (string? (:source row))
+                         (string? (:short_desc row))
+                         (or (nil? (:unit row)) (string? (:unit row)))))
+                  rows))))
+
+  (testing "db-settings includes vital network, logging, and tuning settings"
+    (let [names (set (map :setting (pgex/db-settings db)))]
+      (doseq [required ["listen_addresses"
+                        "logging_collector"
+                        "log_destination"
+                        "log_directory"
+                        "log_filename"
+                        "log_line_prefix"
+                        "log_statement"
+                        "log_min_duration_statement"
+                        "max_connections"
+                        "shared_buffers"
+                        "work_mem"
+                        "wal_level"]]
+        (is (contains? names required) (str "missing setting " required)))))
+
+  (testing "is_default is false after a session-level override"
+    (with-open [conn (jdbc/get-connection db)]
+      (jdbc/execute! conn ["SET work_mem = '8192'"])
+      (let [row (some #(when (= "work_mem" (:setting %)) %) (pgex/db-settings conn))]
+        (is row)
+        (is (false? (:is_default row)))
+        (is (= "8192" (:value row)))
+        (is (= "session" (:source row)))))))
 
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
