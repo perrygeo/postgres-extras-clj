@@ -337,9 +337,10 @@
   "Defines the critical queries and their cutoffs for the `diagnose`
   function. The value is a map containing a predicate fn (true = pass)
   to test against each result, and a description of the problem if false."
-  {:duplicate-indexes {:pred    #(identity %)
+  {:duplicate-indexes {:pred    (constantly false)
                        :onfalse "Duplicate indexes detected"
-                       :idfn    #(identity %)}
+                       :idfn    (fn [{:keys [idx1 idx2]}]
+                                  (str idx1 " duplicates " idx2))}
    :bloat             {:pred    #(< (:bloat %) 10)
                        :onfalse "Bloated tables"
                        :idfn    #(str (:schema %) "." (:object_name %))}
