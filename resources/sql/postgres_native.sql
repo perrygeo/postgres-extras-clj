@@ -637,3 +637,75 @@ ORDER BY
     n.nspname,
     c.relname,
     p.polname;
+
+-- :name io-stats-legacy
+-- :command :query
+-- :result :many
+-- :doc Lower-level I/O statistics from pg_stat_io (PostgreSQL 16 and 17).
+-- read/write/extend/writeback byte volumes are derived from the op_bytes
+-- multiplier, which is always the block size on these versions.
+/* HUG_PSQL_EXTRAS: Lower-level I/O statistics from pg_stat_io (PostgreSQL 16 and 17). */
+SELECT
+    backend_type,
+    object,
+    context,
+    reads,
+    (reads * op_bytes)::bigint AS read_bytes,
+    read_time,
+    writes,
+    (writes * op_bytes)::bigint AS write_bytes,
+    write_time,
+    writebacks,
+    (writebacks * op_bytes)::bigint AS writeback_bytes,
+    writeback_time,
+    extends,
+    (extends * op_bytes)::bigint AS extend_bytes,
+    extend_time,
+    hits,
+    evictions,
+    reuses,
+    fsyncs,
+    fsync_time,
+    stats_reset
+FROM
+    pg_stat_io
+ORDER BY
+    backend_type,
+    object,
+    context;
+
+-- :name io-stats-pg18
+-- :command :query
+-- :result :many
+-- :doc Lower-level I/O statistics from pg_stat_io (PostgreSQL 18+).
+-- reads/writes/extends report explicit byte-level columns; writebacks are
+-- still counted in BLCKSZ units and are converted to bytes here.
+/* HUG_PSQL_EXTRAS: Lower-level I/O statistics from pg_stat_io (PostgreSQL 18+). */
+SELECT
+    backend_type,
+    object,
+    context,
+    reads,
+    read_bytes::bigint AS read_bytes,
+    read_time,
+    writes,
+    write_bytes::bigint AS write_bytes,
+    write_time,
+    writebacks,
+    (writebacks * current_setting('block_size')::bigint)::bigint AS writeback_bytes,
+    writeback_time,
+    extends,
+    extend_bytes::bigint AS extend_bytes,
+    extend_time,
+    hits,
+    evictions,
+    reuses,
+    fsyncs,
+    fsync_time,
+    stats_reset
+FROM
+    pg_stat_io
+ORDER BY
+    backend_type,
+    object,
+    context;

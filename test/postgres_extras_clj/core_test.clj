@@ -354,6 +354,52 @@
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_rls CASCADE"])
       (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_rls_reader"]))))
 
+(deftest io-stats-test
+  (let [vnum (:version_num (pgex/server-version-num db))]
+    (if (< vnum 160000)
+      (testing "pg_stat_io is unavailable before PostgreSQL 16"
+        (is (< vnum 160000)))
+      (do
+        (testing "io-stats returns pg_stat_io rows with the expected shape"
+          (let [rows (pgex/io-stats db)]
+            (is (vector? rows))
+            (is (seq rows))
+            (is (every? (fn [row]
+                          (and (string? (:backend_type row))
+                               (string? (:object row))
+                               (string? (:context row))
+                               (or (nil? (:reads row)) (integer? (:reads row)))
+                               (or (nil? (:read_bytes row)) (integer? (:read_bytes row)))
+                               (or (nil? (:read_time row)) (number? (:read_time row)))
+                               (or (nil? (:writes row)) (integer? (:writes row)))
+                               (or (nil? (:write_bytes row)) (integer? (:write_bytes row)))
+                               (or (nil? (:write_time row)) (number? (:write_time row)))
+                               (or (nil? (:writebacks row)) (integer? (:writebacks row)))
+                               (or (nil? (:writeback_bytes row)) (integer? (:writeback_bytes row)))
+                               (or (nil? (:writeback_time row)) (number? (:writeback_time row)))
+                               (or (nil? (:extends row)) (integer? (:extends row)))
+                               (or (nil? (:extend_bytes row)) (integer? (:extend_bytes row)))
+                               (or (nil? (:extend_time row)) (number? (:extend_time row)))
+                               (or (nil? (:hits row)) (integer? (:hits row)))
+                               (or (nil? (:evictions row)) (integer? (:evictions row)))
+                               (or (nil? (:reuses row)) (integer? (:reuses row)))
+                               (or (nil? (:fsyncs row)) (integer? (:fsyncs row)))
+                               (or (nil? (:fsync_time row)) (number? (:fsync_time row)))
+                               (inst? (:stats_reset row))))
+                        rows))))
+
+        (testing "byte volumes are normalized across versions"
+          (let [rows     (pgex/io-stats db)
+                read-row (some #(when (and (:reads %) (pos? (:reads %))) %) rows)]
+            (is read-row "expected at least one row with reads > 0")
+            (when read-row
+              (is (pos? (:read_bytes read-row)))
+              (if (< vnum 180000)
+              ;; PG 16/17 report block counts, converted here via op_bytes (BLCKSZ)
+                (is (= (* (:reads read-row) 8192) (:read_bytes read-row)))
+              ;; PG 18+ report byte-level columns directly
+                (is (integer? (:read_bytes read-row)))))))))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"

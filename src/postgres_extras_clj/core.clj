@@ -101,6 +101,8 @@
          database-stats
          deprecated-types
          idle-in-transaction
+         io-stats-legacy
+         io-stats-pg18
          replication-stats
          roles
          row-level-security
@@ -169,6 +171,26 @@
   (if (>= (pg-version-num db) 150000)
     (character-sets-pg15 db)
     (character-sets-pg14 db)))
+
+(defn io-stats
+  "Lower-level I/O statistics from pg_stat_io (PostgreSQL 16+).
+
+  Returns one row per backend_type/object/context with read, write,
+  writeback, and extend operation counts, byte volumes, and time spent in
+  milliseconds.
+
+  Byte volumes are normalized across versions:
+  - PostgreSQL 16 and 17 report block counts with an op_bytes multiplier,
+    so read_bytes/write_bytes/extend_bytes/writeback_bytes are computed
+    as count * op_bytes.
+  - PostgreSQL 18+ expose read_bytes/write_bytes/extend_bytes directly and
+    count writebacks in BLCKSZ units, which are converted to bytes here.
+
+  Not available before PostgreSQL 16 (pg_stat_io does not exist)."
+  [db]
+  (if (>= (pg-version-num db) 180000)
+    (io-stats-pg18 db)
+    (io-stats-legacy db)))
 
 (defn stats-collector-drift
   "Row-count drift between the planner estimate (reltuples)
