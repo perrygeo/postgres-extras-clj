@@ -59,6 +59,103 @@ SELECT
 FROM
     pg_stat_archiver;
 
+-- :name backups
+-- :command :query
+-- :result :one
+-- :doc Backup status at a glance: WAL archiving (PITR), in-progress base
+-- backups and logical dumps, and standby/restore state. Completed backups
+-- are not recorded by PostgreSQL, so the counts here reflect configuration
+-- (archive_mode, archived_count) and currently running operations only.
+/* HUG_PSQL_EXTRAS: Backup status at a glance. */
+SELECT
+    current_setting('archive_mode') AS archive_mode,
+    a.archived_count,
+    a.failed_count,
+    a.last_archived_wal,
+    a.last_archived_time,
+    a.last_failed_wal,
+    a.last_failed_time,
+    a.stats_reset AS archiver_stats_reset,
+    w.wal_bytes,
+    bb.basebackup_count,
+    bb.basebackup_streamed_bytes,
+    bb.basebackup_total_bytes,
+    d.pg_dump_count,
+    cp.copy_to_count,
+    cp.copy_to_bytes_processed,
+    pg_is_in_recovery() AS in_recovery,
+    wr.status AS wal_receiver_status
+FROM
+    pg_stat_archiver a
+    CROSS JOIN pg_stat_wal w
+    CROSS JOIN (
+        SELECT
+            count(*) AS basebackup_count,
+            coalesce(sum(backup_streamed), 0) AS basebackup_streamed_bytes,
+            coalesce(sum(backup_total), 0) AS basebackup_total_bytes
+        FROM
+            pg_stat_progress_basebackup) bb
+    CROSS JOIN (
+        SELECT
+            count(*) FILTER (WHERE command = 'COPY TO') AS copy_to_count,
+            coalesce(sum(bytes_processed) FILTER (WHERE command = 'COPY TO'), 0) AS copy_to_bytes_processed
+        FROM
+            pg_stat_progress_copy) cp
+    CROSS JOIN (
+        SELECT
+            count(*) AS pg_dump_count
+        FROM
+            pg_stat_activity
+        WHERE
+            application_name = 'pg_dump') d
+    LEFT JOIN pg_stat_wal_receiver wr ON TRUE;
+
+-- :name active-backups
+-- :command :query
+-- :result :many
+-- :doc Currently running backup operations: streaming base backups
+-- (pg_basebackup) and COPY TO exports (logical dumps, including pg_dump).
+-- One row per active operation; empty when no backup is in progress.
+/* HUG_PSQL_EXTRAS: Currently running backup operations. */
+SELECT
+    'basebackup' AS kind,
+    a.pid,
+    a.usename,
+    a.datname,
+    a.application_name,
+    a.client_addr::text AS client_addr,
+    a.state,
+    b.phase,
+    b.backup_streamed AS bytes_processed,
+    b.backup_total AS bytes_total,
+    NULL::bigint AS tuples_processed,
+    a.query
+FROM
+    pg_stat_progress_basebackup b
+    JOIN pg_stat_activity a ON a.pid = b.pid
+UNION ALL
+SELECT
+    'copy-to' AS kind,
+    a.pid,
+    a.usename,
+    a.datname,
+    a.application_name,
+    a.client_addr::text AS client_addr,
+    a.state,
+    NULL::text AS phase,
+    c.bytes_processed,
+    c.bytes_total,
+    c.tuples_processed,
+    a.query
+FROM
+    pg_stat_progress_copy c
+    JOIN pg_stat_activity a ON a.pid = c.pid
+WHERE
+    c.command = 'COPY TO'
+ORDER BY
+    kind,
+    pid;
+
 -- :name roles
 -- :command :query
 -- :result :many

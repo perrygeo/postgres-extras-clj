@@ -165,7 +165,9 @@ Read-only diagnostics over PostgreSQL system catalogs.
 
 | <span>Function</span> | Scenario |
 |---------|---------|
+| `active-backups` | Currently running backup operations (base backups and logical dumps) |
 | `autovacuum-disabled` | Tables with autovacuum disabled |
+| `backups` | Backup status at a glance (WAL archiving, active backups, recovery) |
 | `bgwriter-stats` | Checkpoint and background writer activity |
 | `database-stats` | Cumulative database-level counters |
 | `idle-in-transaction` | Sessions idle in transaction (vacuum blockers) |
@@ -180,9 +182,10 @@ Read-only diagnostics over PostgreSQL system catalogs.
 | `wal-stats` | WAL activity (PostgreSQL 14+) |
 
 To get a full map of diagnostic stats, use `(read-stats db)` which
-returns a map, with keywords mirroring the table above. The single-row
-instance views — `replication-lag`, `wal-stats`, `wal-archiver`, and
-`bgwriter-stats` — are standalone functions (not part of `read-stats`).
+returns a map, with keywords mirroring the table above. The instance-level
+views — `replication-lag`, `wal-stats`, `wal-archiver`, `bgwriter-stats`,
+`backups`, and `active-backups` — are standalone functions (not part of
+`read-stats`).
 
 Diagnostic queries exclude postgres schemas
 `pg_catalog`, `information_schema`, `pg_toast*`,

@@ -937,6 +937,44 @@
       (is (integer? (:failed_count row)))
       (is (string? (:archive_mode row)))))
 
+  (testing "backups returns a single-row summary with the expected shape"
+    (let [row (pgex/backups db)]
+      (is (map? row))
+      (is (contains? #{"off" "on" "always"} (:archive_mode row)))
+      (is (integer? (:archived_count row)))
+      (is (integer? (:failed_count row)))
+      (is (or (nil? (:last_archived_wal row)) (string? (:last_archived_wal row))))
+      (is (or (nil? (:last_archived_time row)) (inst? (:last_archived_time row))))
+      (is (or (nil? (:last_failed_wal row)) (string? (:last_failed_wal row))))
+      (is (or (nil? (:last_failed_time row)) (inst? (:last_failed_time row))))
+      (is (inst? (:archiver_stats_reset row)))
+      (is (number? (:wal_bytes row)))
+      (is (integer? (:basebackup_count row)))
+      (is (number? (:basebackup_streamed_bytes row)))
+      (is (number? (:basebackup_total_bytes row)))
+      (is (integer? (:pg_dump_count row)))
+      (is (integer? (:copy_to_count row)))
+      (is (number? (:copy_to_bytes_processed row)))
+      (is (boolean? (:in_recovery row)))
+      (is (or (nil? (:wal_receiver_status row)) (string? (:wal_receiver_status row))))))
+
+  (testing "active-backups returns a vector (empty when no backup is running)"
+    (let [rows (pgex/active-backups db)]
+      (is (vector? rows))
+      (is (every? #(and (contains? #{"basebackup" "copy-to"} (:kind %))
+                        (integer? (:pid %))
+                        (string? (:usename %))
+                        (string? (:datname %))
+                        (or (nil? (:application_name %)) (string? (:application_name %)))
+                        (or (nil? (:client_addr %)) (string? (:client_addr %)))
+                        (string? (:state %))
+                        (or (nil? (:phase %)) (string? (:phase %)))
+                        (integer? (:bytes_processed %))
+                        (or (nil? (:bytes_total %)) (integer? (:bytes_total %)))
+                        (or (nil? (:tuples_processed %)) (integer? (:tuples_processed %)))
+                        (or (nil? (:query %)) (string? (:query %))))
+                  rows))))
+
   (testing "roles returns non-empty rows with privilege flags"
     (let [rows (pgex/roles db)]
       (is (seq rows))

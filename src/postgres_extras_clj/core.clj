@@ -94,7 +94,9 @@
          unused-tables
 
          ;; postgres_native.sql
+         active-backups
          autovacuum-disabled
+         backups
          bgwriter-stats-legacy
          bgwriter-stats-pg17
          character-sets-pg14
