@@ -421,13 +421,13 @@ FROM
 ORDER BY
     total_size_bytes DESC;
 
--- :name deprecated-types
+-- :name obsolete-types
 -- :command :query
 -- :result :many
--- :doc Columns using deprecated or discouraged data types (money, serial, char,
+-- :doc Columns using obsolete or discouraged data types (money, serial, char,
 -- length-limited varchar, time and timestamp without time zone).
-/* HUG_PSQL_EXTRAS: Columns using deprecated or discouraged data types (money, serial, char, length-limited varchar, time and timestamp without time zone). */
-WITH deprecated AS (
+/* HUG_PSQL_EXTRAS: Columns using obsolete or discouraged data types (money, serial, char, length-limited varchar, time and timestamp without time zone). */
+WITH obsolete AS (
     SELECT
         n.nspname AS schema,
         c.relname AS relname,
@@ -449,7 +449,7 @@ WITH deprecated AS (
             AND ad.adbin IS NOT NULL
             AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval(%' THEN
             'serial'
-        END AS deprecated_type
+        END AS obsolete_type
     FROM
         pg_attribute a
         INNER JOIN pg_class c ON c.oid = a.attrelid
@@ -469,8 +469,8 @@ SELECT
     relname AS table,
     attname AS column,
     data_type,
-    deprecated_type,
-    CASE deprecated_type
+    obsolete_type,
+    CASE obsolete_type
         WHEN 'money' THEN
             'use numeric'
         WHEN 'char' THEN
@@ -485,9 +485,9 @@ SELECT
             'use GENERATED ... AS IDENTITY'
     END AS recommendation
 FROM
-    deprecated
+    obsolete
 WHERE
-    deprecated_type IS NOT NULL
+    obsolete_type IS NOT NULL
 ORDER BY
     schema,
     relname,
@@ -775,3 +775,43 @@ WHERE
     b NOT LIKE 'loop%'
 ORDER BY
     b;
+
+-- :name hot-updates
+-- :command :query
+-- :result :many
+-- :doc Heap-only tuple (HOT) update effectiveness per table.
+-- A low hot_ratio means most updates are not HOT: either an indexed column
+-- is being updated or there is insufficient free space on the page (fillfactor).
+/* HUG_PSQL_EXTRAS: Heap-only tuple (HOT) update effectiveness per table. */
+WITH table_opts AS (
+    SELECT
+        pg_class.oid,
+        relname,
+        nspname,
+        array_to_string(reloptions, '') AS relopts
+    FROM
+        pg_class
+        INNER JOIN pg_namespace ns ON relnamespace = ns.oid
+)
+SELECT
+    table_opts.nspname AS schema,
+    table_opts.relname AS table,
+    psut.n_tup_upd AS updates,
+    psut.n_tup_hot_upd AS hot_updates,
+    CASE WHEN psut.n_tup_upd = 0 THEN
+        NULL
+    ELSE
+        psut.n_tup_hot_upd::float / psut.n_tup_upd::float
+    END AS hot_ratio,
+    CASE WHEN relopts LIKE '%fillfactor=%' THEN
+        substring(relopts, '.*fillfactor=([0-9]+).*')::integer
+    ELSE
+        100
+    END AS fillfactor
+FROM
+    pg_stat_user_tables psut
+    INNER JOIN table_opts ON table_opts.oid = psut.relid
+WHERE
+    psut.schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+ORDER BY
+    (psut.n_tup_upd - psut.n_tup_hot_upd) DESC;

@@ -100,8 +100,9 @@
          character-sets-pg14
          character-sets-pg15
          database-stats
-         deprecated-types
+         obsolete-types
          hba-file-rules
+         hot-updates
          idle-in-transaction
          io-stats-legacy
          io-stats-pg18
@@ -461,6 +462,20 @@
       rels
       (vec (remove :system_object rels)))))
 
+(defn rules
+  "List all rewrite rules (CREATE RULE) defined on tables and views
+  in the current database. Internal _RETURN rules that back views are
+  excluded.
+
+  Each map describes one rule:
+    :schema        - schema containing the target table/view
+    :table         - target table/view name
+    :rule          - rule name
+    :definition    - CREATE RULE definition from pg_get_ruledef
+    :system_object - true for pg_catalog/information_schema/TimescaleDB objects"
+  [db]
+  (ddl-rule-defs db))
+
 (defn read-data-dictionary
   "Create a data dictionary summarizing all major objects
   in your PostgreSQL database. Respects SQL COMMENTS,
@@ -477,6 +492,7 @@
             :functions          (functions db)
             :indexes            (indexes db)
             :key-relationships  (key-relationships db :include-system-objects? include-system-objects?)
+            :rules              (rules db)
             :schemas            (schemas db)
             :tables             (tables db)
             :triggers           (triggers db)

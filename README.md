@@ -60,6 +60,7 @@ of your database, from a data modeling lens.
 | `schemas` | List all schemas in current database |
 | `partition-children` | List all child partitions in current database |
 | `partition-parents` | List all parent partition tables in current database |
+| `rules` | List all rewrite rules (CREATE RULE) on tables and views |
 | `tables` | List all table objects in current database |
 | `triggers` | List all trigger objects in current database |
 | `views` | List all view objects in current database |
@@ -241,7 +242,8 @@ Generate a data dictionary summarizing all major objects in your database.
 ;  :triggers
 ;  :views
 ;  :partition-children
-;  :partition-parents)
+;  :partition-parents
+;  :rules)
 
 (rand-nth (:tables dd))
 ; {:size_pretty "16 kB",

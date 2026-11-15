@@ -81,6 +81,11 @@
   [table]
   (some #(when (= table (:table %)) %) (pgex/stats-collector-drift db)))
 
+(defn- hot-row
+  "The hot-updates row for `table`, if present."
+  [table]
+  (some #(when (= table (:table %)) %) (pgex/hot-updates db)))
+
 (deftest smoketest
   (testing
    "Healthy?"
@@ -157,10 +162,10 @@
         (is (= "8192" (:value row)))
         (is (= "session" (:source row)))))))
 
-(deftest deprecated-types-test
-  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_deprecated"])
+(deftest obsolete-types-test
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_obsolete"])
   (try
-    (jdbc/execute! db ["CREATE TABLE pgext_deprecated.t (
+    (jdbc/execute! db ["CREATE TABLE pgext_obsolete.t (
         id serial PRIMARY KEY,
         amt money,
         code char(10),
@@ -173,25 +178,25 @@
         n numeric,
         id2 bigint GENERATED ALWAYS AS IDENTITY)"])
 
-    (testing "deprecated-types flags deprecated column types with a recommendation"
-      (let [rows   (filter #(= "pgext_deprecated" (:schema %))
-                           (pgex/deprecated-types db))
-            by-col (into {} (map (juxt :column :deprecated_type) rows))]
+    (testing "obsolete-types flags obsolete column types with a recommendation"
+      (let [rows   (filter #(= "pgext_obsolete" (:schema %))
+                           (pgex/obsolete-types db))
+            by-col (into {} (map (juxt :column :obsolete_type) rows))]
         (is (= "serial" (get by-col "id")))
         (is (= "money" (get by-col "amt")))
         (is (= "char" (get by-col "code")))
         (is (= "varchar" (get by-col "vc")))
         (is (= "time" (get by-col "t")))
         (is (= "timestamp" (get by-col "ts")))
-        ;; non-deprecated columns are not flagged
+        ;; non-obsolete columns are not flagged
         (is (nil? (get by-col "vc2")))
         (is (nil? (get by-col "tz")))
         (is (nil? (get by-col "ok")))
         (is (nil? (get by-col "n")))
         (is (nil? (get by-col "id2")))))
 
-    (testing "deprecated-types rows have the expected shape"
-      (let [rows (pgex/deprecated-types db)]
+    (testing "obsolete-types rows have the expected shape"
+      (let [rows (pgex/obsolete-types db)]
         (is (vector? rows))
         (is (seq rows))
         (is (every? (fn [row]
@@ -199,12 +204,12 @@
                            (string? (:table row))
                            (string? (:column row))
                            (string? (:data_type row))
-                           (string? (:deprecated_type row))
+                           (string? (:obsolete_type row))
                            (string? (:recommendation row))))
                     rows))))
 
     (finally
-      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_deprecated CASCADE"]))))
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_obsolete CASCADE"]))))
 
 (deftest character-sets-test
   (testing "character-sets returns per-database encoding/locale/collation info"
@@ -505,6 +510,56 @@
       (finally
         (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_res_nonsuper"])))))
 
+(deftest hot-updates-test
+  (testing "hot-updates returns one row per table with the expected shape"
+    (let [rows (pgex/hot-updates db)]
+      (is (vector? rows))
+      (is (every? (fn [row]
+                    (and (string? (:schema row))
+                         (string? (:table row))
+                         (integer? (:updates row))
+                         (integer? (:hot_updates row))
+                         (or (nil? (:hot_ratio row))
+                             (number? (:hot_ratio row)))
+                         (integer? (:fillfactor row))
+                         (<= 1 (:fillfactor row) 100)))
+                  rows))))
+
+  (testing "HOT updates happen when the updated column is not indexed and there is free space"
+    (jdbc/execute! db ["CREATE TABLE pgext_hot_ok (id serial PRIMARY KEY, val int) WITH (fillfactor = 80)"])
+    (try
+      (jdbc/execute! db ["INSERT INTO pgext_hot_ok (val) SELECT generate_series(1, 1000)"])
+      (jdbc/execute! db ["UPDATE pgext_hot_ok SET val = val + 1"])
+      ;; On PostgreSQL < 15 the statistics collector updates
+      ;; pg_stat_user_tables asynchronously, so poll until the UPDATE
+      ;; counters become visible before asserting.
+      (is (wait-for #(= 1000 (:updates (hot-row "pgext_hot_ok"))) 10000)
+          "pg_stat_user_tables should eventually reflect the UPDATE")
+      (let [row (hot-row "pgext_hot_ok")]
+        (is row)
+        (is (= 1000 (:updates row)))
+        (is (pos? (:hot_updates row)))
+        (is (> (:hot_ratio row) 0))
+        (is (= 80 (:fillfactor row))))
+      (finally
+        (jdbc/execute! db ["DROP TABLE IF EXISTS pgext_hot_ok"]))))
+
+  (testing "HOT updates are disabled when an indexed column is updated"
+    (jdbc/execute! db ["CREATE TABLE pgext_hot_bad (id serial PRIMARY KEY, val int)"])
+    (jdbc/execute! db ["CREATE INDEX pgext_hot_bad_val_idx ON pgext_hot_bad (val)"])
+    (try
+      (jdbc/execute! db ["INSERT INTO pgext_hot_bad (val) SELECT generate_series(1, 1000)"])
+      (jdbc/execute! db ["UPDATE pgext_hot_bad SET val = val + 1"])
+      (is (wait-for #(= 1000 (:updates (hot-row "pgext_hot_bad"))) 10000)
+          "pg_stat_user_tables should eventually reflect the UPDATE")
+      (let [row (hot-row "pgext_hot_bad")]
+        (is row)
+        (is (= 1000 (:updates row)))
+        (is (zero? (:hot_updates row)))
+        (is (zero? (:hot_ratio row))))
+      (finally
+        (jdbc/execute! db ["DROP TABLE IF EXISTS pgext_hot_bad"])))))
+
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
     (testing "functions that require pg_stat_statements"
@@ -575,7 +630,7 @@
     ; this just confirms that they are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 12 (count (keys (pgex/read-data-dictionary db))))))
+    (is (= 13 (count (keys (pgex/read-data-dictionary db))))))
 
   (testing
    "system objects are filtered by default and included with the flag"
@@ -747,6 +802,28 @@
 
     (finally
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_keys CASCADE"]))))
+
+(deftest rules-data-dictionary
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_rules"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_rules.t (id integer, note text)"])
+    (jdbc/execute! db ["CREATE RULE t_noop AS ON INSERT TO pgext_rules.t DO INSTEAD NOTHING"])
+
+    (testing "rules returns one row per rule with correct shape"
+      (let [row (some #(when (= "t_noop" (:rule %)) %) (pgex/rules db))]
+        (is row)
+        (is (= "pgext_rules" (:schema row)))
+        (is (= "t" (:table row)))
+        (is (string? (:definition row)))
+        (is (false? (:system_object row)))))
+
+    (testing "read-data-dictionary includes user rules and filters system objects"
+      (let [dd (pgex/read-data-dictionary db)]
+        (is (some #(= "t_noop" (:rule %)) (:rules dd)))
+        (is (every? (complement :system_object) (:rules dd)))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_rules CASCADE"]))))
 
 (deftest pg-stat-statements-based
   (testing "outliers returns the expected columns"
