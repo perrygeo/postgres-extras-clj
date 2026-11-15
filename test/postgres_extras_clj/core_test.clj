@@ -261,7 +261,9 @@
                            (integer? (:toast_size_bytes row))
                            (integer? (:toast_data_size_bytes row))
                            (integer? (:toast_index_size_bytes row))
-                           (string? (:toast_columns row))))
+                           (string? (:main_toast_columns row))
+                           (string? (:extended_toast_columns row))
+                           (string? (:external_toast_columns row))))
                     rows))))
 
     (testing "toast identifies the table, its TOAST table, and the toastable columns"
@@ -275,12 +277,11 @@
         (is (pos? (:toast_data_size_bytes row)))
         (is (>= (:toast_size_bytes row) (:toast_data_size_bytes row)))
         (is (pos? (:toast_index_size_bytes row)))
-        ;; toastable columns are listed with their storage strategy
-        (is (str/includes? (:toast_columns row) "big_text (extended)"))
-        (is (str/includes? (:toast_columns row) "big_bytea (external)"))
-        (is (str/includes? (:toast_columns row) "note (main)"))
-        ;; the PLAIN column is never listed
-        (is (not (str/includes? (:toast_columns row) "id (")))))
+        ;; toastable columns are grouped by storage strategy, no parentheticals;
+        ;; the PLAIN column is excluded from every list
+        (is (= "note" (:main_toast_columns row)))
+        (is (= "big_text" (:extended_toast_columns row)))
+        (is (= "big_bytea" (:external_toast_columns row)))))
 
     (testing "toast lists a TOAST table with no out-of-line data"
       (jdbc/execute! db ["CREATE TABLE pgext_toast.empty_t (id integer PRIMARY KEY, note text)"])
@@ -290,7 +291,9 @@
                       (pgex/toast db))]
         (is row)
         (is (zero? (:toast_data_size_bytes row)))
-        (is (= "note (extended)" (:toast_columns row)))))
+        (is (= "" (:main_toast_columns row)))
+        (is (= "note" (:extended_toast_columns row)))
+        (is (= "" (:external_toast_columns row)))))
 
     (finally
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_toast CASCADE"]))))

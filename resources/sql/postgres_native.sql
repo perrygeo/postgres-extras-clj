@@ -637,9 +637,10 @@ ORDER BY
 -- :result :many
 -- :doc TOAST tables with their sizes and the columns eligible for out-of-line storage.
 -- toast_size_bytes is the total TOAST relation (chunk data + index),
--- toast_data_size_bytes is just the out-of-line chunk storage, and
--- toast_columns lists every non-PLAIN (toastable) column with its storage
--- strategy: external (never compressed, moved out-of-line when oversized),
+-- toast_data_size_bytes is just the out-of-line chunk storage, and the
+-- main_toast_columns, extended_toast_columns, and external_toast_columns
+-- list every non-PLAIN (toastable) column grouped by storage strategy:
+-- external (never compressed, moved out-of-line when oversized),
 -- extended (compressed, moved out-of-line only if still too large), or main
 -- (kept inline unless the row itself overflows the page).
 /* HUG_PSQL_EXTRAS: TOAST tables with their sizes and the columns eligible for out-of-line storage. */
@@ -650,27 +651,28 @@ SELECT
     pg_total_relation_size(t.oid) AS toast_size_bytes,
     pg_relation_size(t.oid) AS toast_data_size_bytes,
     pg_indexes_size(t.oid) AS toast_index_size_bytes,
-    (
+    cols.main_toast_columns,
+    cols.extended_toast_columns,
+    cols.external_toast_columns
+FROM
+    pg_class c
+    INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+    INNER JOIN pg_class t ON t.oid = c.reltoastrelid
+    LEFT JOIN LATERAL (
         SELECT
-            string_agg(a.attname || ' (' || CASE a.attstorage
-                WHEN 'e' THEN
-                    'external'
-                WHEN 'x' THEN
-                    'extended'
-                WHEN 'm' THEN
-                    'main'
-            END || ')', ', ' ORDER BY a.attnum)
+            coalesce(string_agg(a.attname, ', ' ORDER BY a.attnum)
+                     FILTER (WHERE a.attstorage = 'm'), '') AS main_toast_columns,
+            coalesce(string_agg(a.attname, ', ' ORDER BY a.attnum)
+                     FILTER (WHERE a.attstorage = 'x'), '') AS extended_toast_columns,
+            coalesce(string_agg(a.attname, ', ' ORDER BY a.attnum)
+                     FILTER (WHERE a.attstorage = 'e'), '') AS external_toast_columns
         FROM
             pg_attribute a
         WHERE
             a.attrelid = c.oid
             AND a.attnum > 0
             AND NOT a.attisdropped
-            AND a.attstorage <> 'p') AS toast_columns
-FROM
-    pg_class c
-    INNER JOIN pg_namespace n ON n.oid = c.relnamespace
-    INNER JOIN pg_class t ON t.oid = c.reltoastrelid
+            AND a.attstorage <> 'p') cols ON TRUE
 WHERE
     c.relkind IN ('r', 'm')
     AND n.nspname NOT IN ('pg_catalog', 'information_schema')
