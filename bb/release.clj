@@ -125,28 +125,3 @@
     (let [version (first versions)]
       (println (str "• Bumping version files to " version))
       (bump-files! version))))
-
-;; --- Entry point -----------------------------------------------------------
-
-(defn cut!
-  "Cut a release. Usage: bb release <major.minor.patch> [--no-push]"
-  [& args]
-  (let [versions (filterv #(re-matches version-re %) args)
-        push?    (not (contains? (set args) "--no-push"))]
-    (when-not (= 1 (count versions))
-      (throw (ex-info "Usage: bb release <major.minor.patch> [--no-push]" {})))
-    (let [version (first versions)
-          branch  (validate! version)
-          tag     (str "v" version)
-          msg     (str "Release " tag)]
-      (println (str "• Cutting release " version " (tag " tag ")"))
-      (bump-files! version)
-      (shell! "git" "add" "README.md" "pom.xml")
-      (shell! "git" "commit" "-m" msg)
-      (shell! "git" "tag" "-a" tag "-m" msg)
-      (when-not (str/includes? (git! "tag" "--points-at" "HEAD") tag)
-        (throw (ex-info (str "Tag " tag " was not created at HEAD") {})))
-      (if push?
-        (do (shell! "git" "push" "origin" branch tag)
-            (println (str "• Pushed " branch " and " tag " — CI will build and deploy " version)))
-        (println (str "• Committed and tagged " tag " (push skipped — run `git push origin " branch " " tag "`)"))))))

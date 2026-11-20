@@ -5,9 +5,9 @@
    :task (clojure "-M:dev")}
 
   test
-  {:doc  "Run the test suite against all currently supported PostgreSQL versions"
+  {:doc     "Run the test suite against all currently supported PostgreSQL versions"
    :depends [test:clean]
-   :task (clojure "-X:test")}
+   :task    (clojure "-X:test")}
 
   test:clean
   {:doc  "Remove the embedded-postgres binary cache. Re-extracted locally from ~/.m2 on the next run (no network download)."
@@ -64,13 +64,9 @@
   {:doc     "Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages"
    :depends [notebook:publish]}
 
-  release:bump
-  {:doc  "Bump version files only (README.md, pom.xml, CHANGELOG.md) — no commit, tag, or push. bb release:bump 0.2.22"
+  bump
+  {:doc  "Bump versions in all files. Explicit version required. bb bump 0.2.22"
    :task release/bump!}
-
-  release
-  {:doc  "Cut a release: bump version files, commit, tag v<version>, and push (bb release 0.2.22 [--no-push])"
-   :task release/cut!}
 
   jar
   {:doc  "Build the JAR. Version = git tag at HEAD (untagged => 0.0.0-SNAPSHOT)"
