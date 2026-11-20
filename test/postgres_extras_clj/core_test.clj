@@ -353,9 +353,9 @@
           (is (= "pgext_rls_reader" (:roles sel)))
           (is (str/includes? (:using_expression sel) "owner"))
           (is (nil? (:with_check_expression sel))))
-        ;; the RESTRICTIVE policy is flagged as such
+        ;; RESTRICTIVE policies must be distinguishable from PERMISSIVE ones
         (is (= "RESTRICTIVE" (:permissive (get by-policy "docs_restrictive"))))
-        ;; RLS is enabled and forced on the table
+        ;; the table-level enablement flags are present on every policy row
         (is (every? #(and (true? (:rls_enabled %)) (true? (:rls_forced %))) rows))))
 
     (finally

@@ -187,12 +187,11 @@
   writeback, and extend operation counts, byte volumes, and time spent in
   milliseconds.
 
-  Byte volumes are normalized across versions:
-  - PostgreSQL 16 and 17 report block counts with an op_bytes multiplier,
-    so read_bytes/write_bytes/extend_bytes/writeback_bytes are computed
-    as count * op_bytes.
-  - PostgreSQL 18+ expose read_bytes/write_bytes/extend_bytes directly and
-    count writebacks in BLCKSZ units, which are converted to bytes here.
+  Byte volumes are normalized to bytes across versions:
+  - PostgreSQL 16 and 17 expose operation counts and an op_bytes multiplier
+    (the block size) rather than explicit byte volumes.
+  - PostgreSQL 18+ reports bytes directly, except writebacks, which are
+    still counted in block-size units.
 
   Not available before PostgreSQL 16 (pg_stat_io does not exist)."
   [db]
@@ -419,16 +418,16 @@
   "List all foreign key relationships as ERD-ready edges.
 
   Each map describes one foreign key constraint:
-    :constraint          — name of the foreign key constraint
-    :schema, :table      — referencing side
-    :columns             — referencing columns, in constraint order
+    :constraint          - name of the foreign key constraint
+    :schema, :table      - referencing side
+    :columns             - referencing columns, in constraint order
     :foreign_schema,
-    :foreign_table       — referenced side
-    :foreign_columns     — referenced columns, parallel to :columns
-    :delete_action       — ON DELETE action (NO ACTION, RESTRICT,
+    :foreign_table       - referenced side
+    :foreign_columns     - referenced columns, parallel to :columns
+    :delete_action       - ON DELETE action (NO ACTION, RESTRICT,
                            CASCADE, SET NULL, SET DEFAULT)
-    :update_action       — ON UPDATE action
-    :match_type          — MATCH type (SIMPLE, FULL, PARTIAL)
+    :update_action       - ON UPDATE action
+    :match_type          - MATCH type (SIMPLE, FULL, PARTIAL)
     :deferrable,
     :initially_deferred,
     :validated
