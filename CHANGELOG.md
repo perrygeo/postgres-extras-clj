@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This project's version numbers are MAJOR.MINOR.PR-NUMBER by convention.
 Pre 1.0 releases will have breaking changes.
 
+## 0.4.24 - Unreleased
+
+* Add the following queries: `active-backups`, `backups`, `character-sets`, `hot-updates`, `obsolete-types`, `row-level-security`, `tablespaces`, `toast`, `io-stats`, `hba-security-stance`.
+* Add `compute-resources`, an OS resource summary (CPU cores, architecture, memory, disks) for Linux hosts. This may have bugs and won't work in all environments but its better than nothing.
+* Expand `db-settings` with `boot_val`, `is_default`, and `source`, plus network and logging settings for log-analyzer setup.
+* Add `rules` to the data dictionary.
+* Name duplicated indexes in the `duplicate-indexes` diagnostic.
+
 ## 0.3.23 - 2026-10-30
 
 * BREAKING: `pgex/records-rank`, To clarify that row counts are *estimates*, I replaced with `:rows` with `:rows_stats_estimate` and `rows_planner_estimate`. You've got to make a choice; pick your poison.
