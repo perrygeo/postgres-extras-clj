@@ -32,8 +32,6 @@
 
 (use-fixtures :once embedded-pg)
 
-;;; Round-trip fixture (no domains/serial/partitions — those are out of v1 scope)
-
 (def round-trip-ddl
   "CREATE SCHEMA rt_src;
    CREATE TABLE rt_src.users (
