@@ -6,11 +6,12 @@ Pre 1.0 releases will have breaking changes.
 
 ## 0.4.24 - Unreleased
 
-* Add the following queries: `active-backups`, `backups`, `character-sets`, `hot-updates`, `obsolete-types`, `row-level-security`, `tablespaces`, `toast`, `io-stats`, `hba-security-stance`.
+* Add `active-backups`, `backups`, `character-sets`, `hot-updates`, `obsolete-types`, `row-level-security`, `tablespaces`, `toast`, `io-stats`, `hba-security-stance` queries.
 * Add `compute-resources`, an OS resource summary (CPU cores, architecture, memory, disks) for Linux hosts. This may have bugs and won't work in all environments but its better than nothing.
 * Expand `db-settings` with `boot_val`, `is_default`, and `source`, plus network and logging settings for log-analyzer setup.
 * Add `rules` to the data dictionary.
 * Name duplicated indexes in the `duplicate-indexes` diagnostic.
+* Add support for Postgresql 19.0, bump minor versions of 14-18
 
 ## 0.3.23 - 2026-10-30
 
