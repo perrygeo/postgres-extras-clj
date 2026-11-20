@@ -1,16 +1,16 @@
 # postgres-extras-clj
+[![Clojars Project](https://img.shields.io/clojars/v/com.github.perrygeo/postgres-extras-clj.svg)](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
 
 A Clojure toolbox for inspecting and diagnosing PostgreSQL databases.
 
 ```clojure
-com.github.perrygeo/postgres-extras-clj {:mvn/version "0.3.23"}
+com.github.perrygeo/postgres-extras-clj {:mvn/version "0.4.24"}
 ```
 
-* [Clojars](https://clojars.org/com.github.perrygeo/postgres-extras-clj)
-* [Github](https://github.com/perrygeo/postgres-extras-clj)
 * [Documentation](https://cljdoc.org/d/com.github.perrygeo/postgres-extras-clj/)
-* [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
 * [Example Notebook](https://perrygeo.github.io/postgres-extras-clj/)
+* [CI tests](https://github.com/perrygeo/postgres-extras-clj/actions/workflows/test.yml)
+* [Github](https://github.com/perrygeo/postgres-extras-clj)
 
 
 ## 🐘 Motivation
@@ -60,6 +60,7 @@ of your database, from a data modeling lens.
 | `schemas` | List all schemas in current database |
 | `partition-children` | List all child partitions in current database |
 | `partition-parents` | List all parent partition tables in current database |
+| `rules` | List all rewrite rules (CREATE RULE) on tables and views |
 | `tables` | List all table objects in current database |
 | `triggers` | List all trigger objects in current database |
 | `views` | List all view objects in current database |
@@ -164,7 +165,9 @@ Read-only diagnostics over PostgreSQL system catalogs.
 
 | <span>Function</span> | Scenario |
 |---------|---------|
+| `active-backups` | Currently running backup operations (base backups and logical dumps) |
 | `autovacuum-disabled` | Tables with autovacuum disabled |
+| `backups` | Backup status at a glance (WAL archiving, active backups, recovery) |
 | `bgwriter-stats` | Checkpoint and background writer activity |
 | `database-stats` | Cumulative database-level counters |
 | `idle-in-transaction` | Sessions idle in transaction (vacuum blockers) |
@@ -179,9 +182,10 @@ Read-only diagnostics over PostgreSQL system catalogs.
 | `wal-stats` | WAL activity (PostgreSQL 14+) |
 
 To get a full map of diagnostic stats, use `(read-stats db)` which
-returns a map, with keywords mirroring the table above. The single-row
-instance views — `replication-lag`, `wal-stats`, `wal-archiver`, and
-`bgwriter-stats` — are standalone functions (not part of `read-stats`).
+returns a map, with keywords mirroring the table above. The instance-level
+views (`replication-lag`, `wal-stats`, `wal-archiver`, `bgwriter-stats`,
+`backups`, and `active-backups`) are standalone functions not part of
+`read-stats`.
 
 Diagnostic queries exclude postgres schemas
 `pg_catalog`, `information_schema`, `pg_toast*`,
@@ -241,7 +245,8 @@ Generate a data dictionary summarizing all major objects in your database.
 ;  :triggers
 ;  :views
 ;  :partition-children
-;  :partition-parents)
+;  :partition-parents
+;  :rules)
 
 (rand-nth (:tables dd))
 ; {:size_pretty "16 kB",
@@ -379,8 +384,6 @@ notebook:render   Render examples/pgbench_tutorial.clj to target/clay with Clay 
 notebook:copy     Copy the rendered notebook artifacts from target/clay into doc/
 notebook:publish  Commit doc/ to the ghpages branch and push to origin
 notebook          Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages
-release:bump      Bump version files only (README.md, pom.xml, CHANGELOG.md) — no commit, tag, or push. bb release:bump 0.2.22
-release           Cut a release: bump version files, commit, tag v<version>, and push (bb release 0.2.22 [--no-push])
 jar               Build the JAR. Version = git tag at HEAD (untagged => 0.0.0-SNAPSHOT)
 publish           Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS_PASSWORD)
 ```

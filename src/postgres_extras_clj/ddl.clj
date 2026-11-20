@@ -171,3 +171,77 @@
                (map #(ensure-semicolon (:definition %)) triggers)
                (map #(ensure-semicolon (:definition %)) rules)
                (map render-comment comments)))))
+
+(defn- order-constraints
+  "Primary-key/unique/check constraints before foreign keys, then by name."
+  [constraints]
+  (sort-by (juxt #(if (= "f" (:type %)) 1 0) :constraint) constraints))
+
+(defn- render-table-ddl
+  "Assemble the complete DDL for one table: CREATE TABLE followed by its
+  constraints, indexes, triggers and comments."
+  [cols opts constraints indexes triggers comments]
+  (str/join "\n\n"
+            (concat
+             [(render-create-table cols opts)]
+             (map render-constraint (order-constraints constraints))
+             (map #(ensure-semicolon (:definition %)) (sort-by :index indexes))
+             (map #(ensure-semicolon (:definition %)) (sort-by :trigger triggers))
+             (map render-comment (sort-by (juxt :object_type :column) comments)))))
+
+(defn ddl-for-objects
+  "Generate per-object DDL for every table and view in a database.
+
+  Returns a vector of maps, one per object, sorted by schema then name:
+
+    {:schema \"public\" :name \"users\" :kind :table :ddl \"CREATE TABLE ...\"}
+
+  Tables include their constraints, indexes, triggers and comments; views
+  include their SELECT definition and any comments. A table whose columns
+  cannot be decompiled (for example a PostGIS geometry column when the
+  extension's shared library is unavailable) is returned with an :error
+  message instead of :ddl, so one broken object does not fail the report.
+
+  Options:
+    :include-system-objects?  emit pg_catalog/information_schema objects (default false)
+    :schemas                  restrict output to a vector of schema names"
+  [db & {:keys [include-system-objects? schemas]
+         :or   {include-system-objects? false}}]
+  (let [keep?          (partial keep-object? include-system-objects? schemas)
+        tables         (sort-by (juxt :schema :table) (filter keep? (pgex/ddl-table-options db)))
+        views          (sort-by (juxt :schema :view) (filter keep? (pgex/ddl-view-defs db)))
+        constraints-by (group-by (juxt :schema :table) (filter keep? (pgex/ddl-table-constraints db)))
+        indexes-by     (group-by (juxt :schema :table) (filter keep? (pgex/ddl-index-defs db)))
+        triggers-by    (group-by (juxt :schema :table) (filter keep? (pgex/ddl-trigger-defs db)))
+        comments-by    (group-by (juxt :schema :object) (filter keep? (pgex/ddl-comments db)))
+        table-entry    (fn [{:keys [schema table] :as opts}]
+                         (let [k [schema table]]
+                           (try
+                             {:schema schema
+                              :name   table
+                              :kind   :table
+                              :ddl    (render-table-ddl
+                                       (pgex/ddl-table-columns-for-table db {:schema schema :table table})
+                                       opts
+                                       (get constraints-by k)
+                                       (get indexes-by k)
+                                       (get triggers-by k)
+                                       (get comments-by k))}
+                             (catch Exception e
+                               {:schema schema
+                                :name   table
+                                :kind   :table
+                                :error  (.getMessage e)}))))
+        view-entry     (fn [{:keys [schema view] :as v}]
+                         (let [k [schema view]]
+                           {:schema schema
+                            :name   view
+                            :kind   (if (= "m" (:kind v)) :materialized-view :view)
+                            :ddl    (str/join "\n\n"
+                                              (concat
+                                               [(render-view v)]
+                                               (map render-comment
+                                                    (sort-by (juxt :object_type :column)
+                                                             (get comments-by k)))))}))]
+    (vec (sort-by (juxt :schema :name)
+                  (concat (map table-entry tables) (map view-entry views))))))

@@ -81,6 +81,11 @@
   [table]
   (some #(when (= table (:table %)) %) (pgex/stats-collector-drift db)))
 
+(defn- hot-row
+  "The hot-updates row for `table`, if present."
+  [table]
+  (some #(when (= table (:table %)) %) (pgex/hot-updates db)))
+
 (deftest smoketest
   (testing
    "Healthy?"
@@ -103,7 +108,460 @@
   (testing
    "diagnostic-fns with an IO-laden table fails the :ratio predicate"
     (is (some? (pgex/diagnose (mock-stats-blockio)
-                              :diagnostic-fns test-fns)))))
+                              :diagnostic-fns test-fns))))
+
+  (testing
+   "duplicate-indexes produces a warning without throwing"
+    (let [stats {:duplicate-indexes
+                 [{:size 14188544
+                   :idx1 "idx_users_email"
+                   :idx2 "idx_users_email_dup"}]}
+          warnings (pgex/diagnose-warnings stats)]
+      (is (= 1 (count warnings)))
+      (is (= :duplicate-indexes (:diagnostic (first warnings))))
+      (is (str/includes? (:message (first warnings))
+                         "idx_users_email duplicates idx_users_email_dup")))))
+
+(deftest db-settings-test
+  (testing "db-settings returns a seq with the expected shape"
+    (let [rows (pgex/db-settings db)]
+      (is (vector? rows))
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:setting row))
+                         (string? (:value row))
+                         (string? (:boot_val row))
+                         (boolean? (:is_default row))
+                         (string? (:source row))
+                         (string? (:short_desc row))
+                         (or (nil? (:unit row)) (string? (:unit row)))))
+                  rows))))
+
+  (testing "db-settings includes vital network, logging, and tuning settings"
+    (let [names (set (map :setting (pgex/db-settings db)))]
+      (doseq [required ["listen_addresses"
+                        "logging_collector"
+                        "log_destination"
+                        "log_directory"
+                        "log_filename"
+                        "log_line_prefix"
+                        "log_statement"
+                        "log_min_duration_statement"
+                        "max_connections"
+                        "shared_buffers"
+                        "work_mem"
+                        "wal_level"]]
+        (is (contains? names required) (str "missing setting " required)))))
+
+  (testing "is_default is false after a session-level override"
+    (with-open [conn (jdbc/get-connection db)]
+      (jdbc/execute! conn ["SET work_mem = '8192'"])
+      (let [row (some #(when (= "work_mem" (:setting %)) %) (pgex/db-settings conn))]
+        (is row)
+        (is (false? (:is_default row)))
+        (is (= "8192" (:value row)))
+        (is (= "session" (:source row)))))))
+
+(deftest obsolete-types-test
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_obsolete"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_obsolete.t (
+        id serial PRIMARY KEY,
+        amt money,
+        code char(10),
+        vc varchar(50),
+        vc2 varchar,
+        t time,
+        ts timestamp,
+        tz timestamptz,
+        ok text,
+        n numeric,
+        id2 bigint GENERATED ALWAYS AS IDENTITY)"])
+
+    (testing "obsolete-types flags obsolete column types with a recommendation"
+      (let [rows   (filter #(= "pgext_obsolete" (:schema %))
+                           (pgex/obsolete-types db))
+            by-col (into {} (map (juxt :column :obsolete_type) rows))]
+        (is (= "serial" (get by-col "id")))
+        (is (= "money" (get by-col "amt")))
+        (is (= "char" (get by-col "code")))
+        (is (= "varchar" (get by-col "vc")))
+        (is (= "time" (get by-col "t")))
+        (is (= "timestamp" (get by-col "ts")))
+        ;; non-obsolete columns are not flagged
+        (is (nil? (get by-col "vc2")))
+        (is (nil? (get by-col "tz")))
+        (is (nil? (get by-col "ok")))
+        (is (nil? (get by-col "n")))
+        (is (nil? (get by-col "id2")))))
+
+    (testing "obsolete-types rows have the expected shape"
+      (let [rows (pgex/obsolete-types db)]
+        (is (vector? rows))
+        (is (seq rows))
+        (is (every? (fn [row]
+                      (and (string? (:schema row))
+                           (string? (:table row))
+                           (string? (:column row))
+                           (string? (:data_type row))
+                           (string? (:obsolete_type row))
+                           (string? (:recommendation row))))
+                    rows))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_obsolete CASCADE"]))))
+
+(deftest character-sets-test
+  (testing "character-sets returns per-database encoding/locale/collation info"
+    (let [rows (pgex/character-sets db)]
+      (is (vector? rows))
+      (is (seq rows))
+      (is (every? (fn [row]
+                    (and (string? (:database row))
+                         (string? (:encoding row))
+                         (string? (:lc_collate row))
+                         (string? (:lc_ctype row))
+                         (or (nil? (:collation_provider row))
+                             (string? (:collation_provider row)))
+                         (or (nil? (:collation_version row))
+                             (string? (:collation_version row)))))
+                  rows))
+      ;; the current database is listed
+      (is (some #(= "postgres" (:database %)) rows))))
+
+  (testing "collation_provider is populated on PostgreSQL >= 15 and nil before"
+    (let [vnum     (:version_num (pgex/server-version-num db))
+          provider (:collation_provider (first (pgex/character-sets db)))]
+      (if (>= vnum 150000)
+        (is (contains? #{"libc" "icu" "builtin"} provider))
+        (is (nil? provider))))))
+
+(deftest toast-test
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_toast"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_toast.t (
+        id integer PRIMARY KEY,
+        big_text text,
+        big_bytea bytea,
+        note text)"])
+    (jdbc/execute! db ["ALTER TABLE pgext_toast.t ALTER COLUMN big_bytea SET STORAGE EXTERNAL"])
+    (jdbc/execute! db ["ALTER TABLE pgext_toast.t ALTER COLUMN note SET STORAGE MAIN"])
+    (jdbc/execute! db ["INSERT INTO pgext_toast.t
+        SELECT i, repeat(md5(i::text), 1000), repeat('x', 100000)::bytea, repeat('z', 10000)
+        FROM generate_series(1, 30) i"])
+
+    (testing "toast returns one row per TOAST table with the expected shape"
+      (let [rows (pgex/toast db)]
+        (is (vector? rows))
+        (is (seq rows))
+        (is (every? (fn [row]
+                      (and (string? (:schema row))
+                           (string? (:table row))
+                           (string? (:toast_table row))
+                           (integer? (:toast_size_bytes row))
+                           (integer? (:toast_data_size_bytes row))
+                           (integer? (:toast_index_size_bytes row))
+                           (string? (:main_toast_columns row))
+                           (string? (:extended_toast_columns row))
+                           (string? (:external_toast_columns row))))
+                    rows))))
+
+    (testing "toast identifies the table, its TOAST table, and the toastable columns"
+      (let [row (some #(when (and (= "pgext_toast" (:schema %))
+                                  (= "t" (:table %)))
+                         %)
+                      (pgex/toast db))]
+        (is row)
+        (is (re-find #"^pg_toast_\d+$" (:toast_table row)))
+        ;; out-of-line storage actually happened
+        (is (pos? (:toast_data_size_bytes row)))
+        (is (>= (:toast_size_bytes row) (:toast_data_size_bytes row)))
+        (is (pos? (:toast_index_size_bytes row)))
+        ;; toastable columns are grouped by storage strategy, no parentheticals;
+        ;; the PLAIN column is excluded from every list
+        (is (= "note" (:main_toast_columns row)))
+        (is (= "big_text" (:extended_toast_columns row)))
+        (is (= "big_bytea" (:external_toast_columns row)))))
+
+    (testing "toast lists a TOAST table with no out-of-line data"
+      (jdbc/execute! db ["CREATE TABLE pgext_toast.empty_t (id integer PRIMARY KEY, note text)"])
+      (let [row (some #(when (and (= "pgext_toast" (:schema %))
+                                  (= "empty_t" (:table %)))
+                         %)
+                      (pgex/toast db))]
+        (is row)
+        (is (zero? (:toast_data_size_bytes row)))
+        (is (= "" (:main_toast_columns row)))
+        (is (= "note" (:extended_toast_columns row)))
+        (is (= "" (:external_toast_columns row)))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_toast CASCADE"]))))
+
+(deftest row-level-security-test
+  (testing "row-level-security is empty when no policies are defined"
+    (is (empty? (pgex/row-level-security db))))
+
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_rls"])
+  (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_rls_reader"])
+  (try
+    (jdbc/execute! db ["CREATE ROLE pgext_rls_reader"])
+    (jdbc/execute! db ["CREATE TABLE pgext_rls.docs (
+        id integer PRIMARY KEY,
+        owner text,
+        body text)"])
+    (jdbc/execute! db ["CREATE POLICY docs_all ON pgext_rls.docs USING (true) WITH CHECK (true)"])
+    (jdbc/execute! db ["CREATE POLICY docs_owner_select ON pgext_rls.docs FOR SELECT TO pgext_rls_reader USING (owner = current_user)"])
+    (jdbc/execute! db ["CREATE POLICY docs_restrictive ON pgext_rls.docs AS RESTRICTIVE FOR SELECT TO pgext_rls_reader USING (body IS NOT NULL)"])
+    (jdbc/execute! db ["ALTER TABLE pgext_rls.docs ENABLE ROW LEVEL SECURITY"])
+    (jdbc/execute! db ["ALTER TABLE pgext_rls.docs FORCE ROW LEVEL SECURITY"])
+
+    (testing "row-level-security returns one row per policy with the expected shape"
+      (let [rows (filter #(= "pgext_rls" (:schema %))
+                         (pgex/row-level-security db))]
+        (is (= 3 (count rows)))
+        (is (every? (fn [row]
+                      (and (string? (:schema row))
+                           (string? (:table row))
+                           (string? (:policy row))
+                           (contains? #{"SELECT" "INSERT" "UPDATE" "DELETE" "ALL"} (:command row))
+                           (contains? #{"PERMISSIVE" "RESTRICTIVE"} (:permissive row))
+                           (string? (:roles row))
+                           (or (nil? (:using_expression row)) (string? (:using_expression row)))
+                           (or (nil? (:with_check_expression row)) (string? (:with_check_expression row)))
+                           (boolean? (:rls_enabled row))
+                           (boolean? (:rls_forced row))))
+                    rows))))
+
+    (testing "row-level-security reports commands, roles, and RLS flags"
+      (let [rows      (filter #(= "pgext_rls" (:schema %))
+                              (pgex/row-level-security db))
+            by-policy (into {} (map (juxt :policy identity) rows))]
+        ;; the permissive ALL policy targets public and has both expressions
+        (let [all-p (get by-policy "docs_all")]
+          (is all-p)
+          (is (= "ALL" (:command all-p)))
+          (is (= "PERMISSIVE" (:permissive all-p)))
+          (is (= "public" (:roles all-p)))
+          (is (= "true" (:using_expression all-p)))
+          (is (= "true" (:with_check_expression all-p))))
+        ;; the SELECT policy targets a specific role with a USING qualifier
+        (let [sel (get by-policy "docs_owner_select")]
+          (is sel)
+          (is (= "SELECT" (:command sel)))
+          (is (= "PERMISSIVE" (:permissive sel)))
+          (is (= "pgext_rls_reader" (:roles sel)))
+          (is (str/includes? (:using_expression sel) "owner"))
+          (is (nil? (:with_check_expression sel))))
+        ;; RESTRICTIVE policies must be distinguishable from PERMISSIVE ones
+        (is (= "RESTRICTIVE" (:permissive (get by-policy "docs_restrictive"))))
+        ;; the table-level enablement flags are present on every policy row
+        (is (every? #(and (true? (:rls_enabled %)) (true? (:rls_forced %))) rows))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_rls CASCADE"])
+      (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_rls_reader"]))))
+
+(deftest io-stats-test
+  (let [vnum (:version_num (pgex/server-version-num db))]
+    (if (< vnum 160000)
+      (testing "pg_stat_io is unavailable before PostgreSQL 16"
+        (is (< vnum 160000)))
+      (do
+        (testing "io-stats returns pg_stat_io rows with the expected shape"
+          (let [rows (pgex/io-stats db)]
+            (is (vector? rows))
+            (is (seq rows))
+            (is (every? (fn [row]
+                          (and (string? (:backend_type row))
+                               (string? (:object row))
+                               (string? (:context row))
+                               (or (nil? (:reads row)) (integer? (:reads row)))
+                               (or (nil? (:read_bytes row)) (integer? (:read_bytes row)))
+                               (or (nil? (:read_time row)) (number? (:read_time row)))
+                               (or (nil? (:writes row)) (integer? (:writes row)))
+                               (or (nil? (:write_bytes row)) (integer? (:write_bytes row)))
+                               (or (nil? (:write_time row)) (number? (:write_time row)))
+                               (or (nil? (:writebacks row)) (integer? (:writebacks row)))
+                               (or (nil? (:writeback_bytes row)) (integer? (:writeback_bytes row)))
+                               (or (nil? (:writeback_time row)) (number? (:writeback_time row)))
+                               (or (nil? (:extends row)) (integer? (:extends row)))
+                               (or (nil? (:extend_bytes row)) (integer? (:extend_bytes row)))
+                               (or (nil? (:extend_time row)) (number? (:extend_time row)))
+                               (or (nil? (:hits row)) (integer? (:hits row)))
+                               (or (nil? (:evictions row)) (integer? (:evictions row)))
+                               (or (nil? (:reuses row)) (integer? (:reuses row)))
+                               (or (nil? (:fsyncs row)) (integer? (:fsyncs row)))
+                               (or (nil? (:fsync_time row)) (number? (:fsync_time row)))
+                               (inst? (:stats_reset row))))
+                        rows))))
+
+        (testing "byte volumes are normalized across versions"
+          (let [rows     (pgex/io-stats db)
+                read-row (some #(when (and (:reads %) (pos? (:reads %))) %) rows)]
+            (is read-row "expected at least one row with reads > 0")
+            (when read-row
+              (is (pos? (:read_bytes read-row)))
+              (if (< vnum 180000)
+              ;; PG 16/17 report block counts, converted here via op_bytes (BLCKSZ)
+                (is (= (* (:reads read-row) 8192) (:read_bytes read-row)))
+              ;; PG 18+ report byte-level columns directly
+                (is (integer? (:read_bytes read-row)))))))))))
+
+(deftest hba-security-stance-test
+  (testing "hba-security-stance returns a summary map on a superuser connection"
+    (let [raw    (pgex/hba-file-rules db)
+          stance (pgex/hba-security-stance db)]
+      (is (map? stance))
+      (is (= #{:trust-rule-count :deprecated-password-rule-count :open-ip-ranges}
+             (set (keys stance))))
+      (is (integer? (:trust-rule-count stance)))
+      (is (integer? (:deprecated-password-rule-count stance)))
+      (is (set? (:open-ip-ranges stance)))
+      (is (every? string? (:open-ip-ranges stance)))
+      ;; counts cross-check against the raw parsed rules
+      (is (= (count (filter #(= "trust" (:auth_method %)) raw))
+             (:trust-rule-count stance)))
+      (is (= (count (filter #(contains? #{"password" "md5"} (:auth_method %)) raw))
+             (:deprecated-password-rule-count stance)))
+      ;; every host rule with an address+netmask yields a CIDR in the set
+      (let [host-with-range (filter #(and (str/starts-with? (:type %) "host")
+                                          (:address %)
+                                          (:netmask %))
+                                    raw)]
+        (is (= (count (distinct (map (juxt :address :netmask) host-with-range)))
+               (count (:open-ip-ranges stance))))
+        (is (every? #(re-matches #".+/[0-9]+" %) (:open-ip-ranges stance))))))
+
+  (testing "hba-security-stance returns {} when pg_hba_file_rules is not accessible"
+    (jdbc/execute! db ["CREATE ROLE pgext_hba_nonsuper NOLOGIN"])
+    (try
+      (with-open [conn (jdbc/get-connection db)]
+        (jdbc/execute! conn ["SET ROLE pgext_hba_nonsuper"])
+        (is (= {} (pgex/hba-security-stance conn))))
+      (finally
+        (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_hba_nonsuper"])))))
+
+(deftest tablespaces-test
+  (testing "tablespaces lists the built-in tablespaces with the expected shape"
+    (let [rows (pgex/tablespaces db)]
+      (is (vector? rows))
+      (is (>= (count rows) 2))
+      (is (every? (fn [row]
+                    (and (string? (:tablespace row))
+                         (string? (:owner row))
+                         (or (nil? (:location row)) (string? (:location row)))
+                         (integer? (:size_bytes row))
+                         (pos? (:size_bytes row))
+                         (or (nil? (:options row)) (string? (:options row)))))
+                  rows))
+      (is (some #(= "pg_default" (:tablespace %)) rows))
+      (is (some #(= "pg_global" (:tablespace %)) rows))))
+
+  (testing "tablespaces reports a custom tablespace with location, size, and options"
+    (let [dir (java.nio.file.Files/createTempDirectory
+               "pgext-ts-"
+               (make-array java.nio.file.attribute.FileAttribute 0))]
+      (try
+        (jdbc/execute! db [(str "CREATE TABLESPACE pgext_ts LOCATION '" dir "' WITH (seq_page_cost = 1.1)")])
+        (jdbc/execute! db ["CREATE TABLE pgext_ts_table (id integer) TABLESPACE pgext_ts"])
+        (jdbc/execute! db ["INSERT INTO pgext_ts_table SELECT generate_series(1, 1000)"])
+        (let [row (some #(when (= "pgext_ts" (:tablespace %)) %) (pgex/tablespaces db))]
+          (is row)
+          (is (= "postgres" (:owner row)))
+          (is (= (str dir) (:location row)))
+          (is (pos? (:size_bytes row)))
+          (is (str/includes? (:options row) "seq_page_cost=1.1")))
+        (finally
+          (jdbc/execute! db ["DROP TABLE IF EXISTS pgext_ts_table"])
+          (jdbc/execute! db ["DROP TABLESPACE IF EXISTS pgext_ts"])
+          (java.nio.file.Files/deleteIfExists dir))))))
+
+(deftest compute-resources-test
+  (testing "compute-resources returns an OS resource summary on a superuser connection"
+    (let [resources (pgex/compute-resources db)
+          linux?    (str/includes? (str/lower-case (System/getProperty "os.name")) "linux")]
+      (is (map? resources))
+      (if linux?
+        (do
+          (is (= #{:cpu-cores :cpu-architecture :memory-bytes :disks}
+                 (set (keys resources))))
+          (is (integer? (:cpu-cores resources)))
+          (is (pos? (:cpu-cores resources)))
+          (is (string? (:cpu-architecture resources)))
+          (is (seq (:cpu-architecture resources)))
+          (is (re-matches #"[A-Za-z0-9_]+" (:cpu-architecture resources)))
+          (is (integer? (:memory-bytes resources)))
+          (is (pos? (:memory-bytes resources)))
+          (is (vector? (:disks resources)))
+          (is (seq (:disks resources)))
+          (is (every? (fn [disk]
+                        (and (string? (:device disk))
+                             (seq (:device disk))
+                             (integer? (:size_bytes disk))
+                             (pos? (:size_bytes disk))))
+                      (:disks resources))))
+        ;; /proc and /sys are Linux-only, so non-Linux hosts get {}
+        (is (= {} resources)))))
+
+  (testing "compute-resources returns {} when /proc and /sys are not accessible"
+    (jdbc/execute! db ["CREATE ROLE pgext_res_nonsuper NOLOGIN"])
+    (try
+      (with-open [conn (jdbc/get-connection db)]
+        (jdbc/execute! conn ["SET ROLE pgext_res_nonsuper"])
+        (is (= {} (pgex/compute-resources conn))))
+      (finally
+        (jdbc/execute! db ["DROP ROLE IF EXISTS pgext_res_nonsuper"])))))
+
+(deftest hot-updates-test
+  (testing "hot-updates returns one row per table with the expected shape"
+    (let [rows (pgex/hot-updates db)]
+      (is (vector? rows))
+      (is (every? (fn [row]
+                    (and (string? (:schema row))
+                         (string? (:table row))
+                         (integer? (:updates row))
+                         (integer? (:hot_updates row))
+                         (or (nil? (:hot_ratio row))
+                             (number? (:hot_ratio row)))
+                         (integer? (:fillfactor row))
+                         (<= 1 (:fillfactor row) 100)))
+                  rows))))
+
+  (testing "HOT updates happen when the updated column is not indexed and there is free space"
+    (jdbc/execute! db ["CREATE TABLE pgext_hot_ok (id serial PRIMARY KEY, val int) WITH (fillfactor = 80)"])
+    (try
+      (jdbc/execute! db ["INSERT INTO pgext_hot_ok (val) SELECT generate_series(1, 1000)"])
+      (jdbc/execute! db ["UPDATE pgext_hot_ok SET val = val + 1"])
+      ;; On PostgreSQL < 15 the statistics collector updates
+      ;; pg_stat_user_tables asynchronously, so poll until the UPDATE
+      ;; counters become visible before asserting.
+      (is (wait-for #(= 1000 (:updates (hot-row "pgext_hot_ok"))) 10000)
+          "pg_stat_user_tables should eventually reflect the UPDATE")
+      (let [row (hot-row "pgext_hot_ok")]
+        (is row)
+        (is (= 1000 (:updates row)))
+        (is (pos? (:hot_updates row)))
+        (is (> (:hot_ratio row) 0))
+        (is (= 80 (:fillfactor row))))
+      (finally
+        (jdbc/execute! db ["DROP TABLE IF EXISTS pgext_hot_ok"]))))
+
+  (testing "HOT updates are disabled when an indexed column is updated"
+    (jdbc/execute! db ["CREATE TABLE pgext_hot_bad (id serial PRIMARY KEY, val int)"])
+    (jdbc/execute! db ["CREATE INDEX pgext_hot_bad_val_idx ON pgext_hot_bad (val)"])
+    (try
+      (jdbc/execute! db ["INSERT INTO pgext_hot_bad (val) SELECT generate_series(1, 1000)"])
+      (jdbc/execute! db ["UPDATE pgext_hot_bad SET val = val + 1"])
+      (is (wait-for #(= 1000 (:updates (hot-row "pgext_hot_bad"))) 10000)
+          "pg_stat_user_tables should eventually reflect the UPDATE")
+      (let [row (hot-row "pgext_hot_bad")]
+        (is row)
+        (is (= 1000 (:updates row)))
+        (is (zero? (:hot_updates row)))
+        (is (zero? (:hot_ratio row))))
+      (finally
+        (jdbc/execute! db ["DROP TABLE IF EXISTS pgext_hot_bad"])))))
 
 ; TODO requires pg_stat_statements extension, see above
 #_(deftest pg_stat_statements_related
@@ -125,7 +583,7 @@
 
   (testing
    "active database connections, at least one since we're asking."
-    (is (some? (pgex/connections db))))
+    (is (some? (pgex/connections db)))))
 
   ;; The following calls are covered by the read-stats fn
   ; (pgex/all-locks db) | Queries with active locks |
@@ -156,7 +614,7 @@
 
   ; Not sure how we'd test this, TODO
   ; (pgex/kill-all! db)
-  )
+
 (deftest data-dict
 
   (testing
@@ -175,7 +633,7 @@
     ; this just confirms that they are syntactically
     ;   correct, and the hugsql macros are wired up correctly.
     ;   the contents may not be meaningful.
-    (is (= 12 (count (keys (pgex/read-data-dictionary db))))))
+    (is (= 13 (count (keys (pgex/read-data-dictionary db))))))
 
   (testing
    "system objects are filtered by default and included with the flag"
@@ -186,7 +644,7 @@
       (is (every? (complement :system_object) (:tables dd-default)))
       (is (every? (complement :system_object) (:columns dd-default)))
       (is (every? (complement :system_object) (:constraints dd-default)))
-      (is (some :system_object (:constraints dd-all)))))
+      (is (some :system_object (:constraints dd-all))))))
 
   ; The following calls are covered by the read-data-dictionary fn
   ; | (columns db) | List all database column objects |
@@ -199,7 +657,6 @@
   ; | (partition-parents db) | List all parent partitions in current database |
   ; | (tables db) | List all table objects in current database |
   ; | (views db) | List all view objects in current database |
-  )
 
 (deftest triggers-data-dictionary
   (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_trig"])
@@ -349,6 +806,28 @@
     (finally
       (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_keys CASCADE"]))))
 
+(deftest rules-data-dictionary
+  (jdbc/execute! db ["CREATE SCHEMA IF NOT EXISTS pgext_rules"])
+  (try
+    (jdbc/execute! db ["CREATE TABLE pgext_rules.t (id integer, note text)"])
+    (jdbc/execute! db ["CREATE RULE t_noop AS ON INSERT TO pgext_rules.t DO INSTEAD NOTHING"])
+
+    (testing "rules returns one row per rule with correct shape"
+      (let [row (some #(when (= "t_noop" (:rule %)) %) (pgex/rules db))]
+        (is row)
+        (is (= "pgext_rules" (:schema row)))
+        (is (= "t" (:table row)))
+        (is (string? (:definition row)))
+        (is (false? (:system_object row)))))
+
+    (testing "read-data-dictionary includes user rules and filters system objects"
+      (let [dd (pgex/read-data-dictionary db)]
+        (is (some #(= "t_noop" (:rule %)) (:rules dd)))
+        (is (every? (complement :system_object) (:rules dd)))))
+
+    (finally
+      (jdbc/execute! db ["DROP SCHEMA IF EXISTS pgext_rules CASCADE"]))))
+
 (deftest pg-stat-statements-based
   (testing "outliers returns the expected columns"
     (let [rows (pgex/outliers db {:limit 10})]
@@ -460,6 +939,44 @@
       (is (integer? (:archived_count row)))
       (is (integer? (:failed_count row)))
       (is (string? (:archive_mode row)))))
+
+  (testing "backups returns a single-row summary with the expected shape"
+    (let [row (pgex/backups db)]
+      (is (map? row))
+      (is (contains? #{"off" "on" "always"} (:archive_mode row)))
+      (is (integer? (:archived_count row)))
+      (is (integer? (:failed_count row)))
+      (is (or (nil? (:last_archived_wal row)) (string? (:last_archived_wal row))))
+      (is (or (nil? (:last_archived_time row)) (inst? (:last_archived_time row))))
+      (is (or (nil? (:last_failed_wal row)) (string? (:last_failed_wal row))))
+      (is (or (nil? (:last_failed_time row)) (inst? (:last_failed_time row))))
+      (is (inst? (:archiver_stats_reset row)))
+      (is (number? (:wal_bytes row)))
+      (is (integer? (:basebackup_count row)))
+      (is (number? (:basebackup_streamed_bytes row)))
+      (is (number? (:basebackup_total_bytes row)))
+      (is (integer? (:pg_dump_count row)))
+      (is (integer? (:copy_to_count row)))
+      (is (number? (:copy_to_bytes_processed row)))
+      (is (boolean? (:in_recovery row)))
+      (is (or (nil? (:wal_receiver_status row)) (string? (:wal_receiver_status row))))))
+
+  (testing "active-backups returns a vector (empty when no backup is running)"
+    (let [rows (pgex/active-backups db)]
+      (is (vector? rows))
+      (is (every? #(and (contains? #{"basebackup" "copy-to"} (:kind %))
+                        (integer? (:pid %))
+                        (string? (:usename %))
+                        (string? (:datname %))
+                        (or (nil? (:application_name %)) (string? (:application_name %)))
+                        (or (nil? (:client_addr %)) (string? (:client_addr %)))
+                        (string? (:state %))
+                        (or (nil? (:phase %)) (string? (:phase %)))
+                        (integer? (:bytes_processed %))
+                        (or (nil? (:bytes_total %)) (integer? (:bytes_total %)))
+                        (or (nil? (:tuples_processed %)) (integer? (:tuples_processed %)))
+                        (or (nil? (:query %)) (string? (:query %))))
+                  rows))))
 
   (testing "roles returns non-empty rows with privilege flags"
     (let [rows (pgex/roles db)]

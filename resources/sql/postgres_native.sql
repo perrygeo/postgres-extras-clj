@@ -59,6 +59,103 @@ SELECT
 FROM
     pg_stat_archiver;
 
+-- :name backups
+-- :command :query
+-- :result :one
+-- :doc Backup status at a glance: WAL archiving (PITR), in-progress base
+-- backups and logical dumps, and standby/restore state. Completed backups
+-- are not recorded by PostgreSQL, so the counts here reflect configuration
+-- (archive_mode, archived_count) and currently running operations only.
+/* HUG_PSQL_EXTRAS: Backup status at a glance. */
+SELECT
+    current_setting('archive_mode') AS archive_mode,
+    a.archived_count,
+    a.failed_count,
+    a.last_archived_wal,
+    a.last_archived_time,
+    a.last_failed_wal,
+    a.last_failed_time,
+    a.stats_reset AS archiver_stats_reset,
+    w.wal_bytes,
+    bb.basebackup_count,
+    bb.basebackup_streamed_bytes,
+    bb.basebackup_total_bytes,
+    d.pg_dump_count,
+    cp.copy_to_count,
+    cp.copy_to_bytes_processed,
+    pg_is_in_recovery() AS in_recovery,
+    wr.status AS wal_receiver_status
+FROM
+    pg_stat_archiver a
+    CROSS JOIN pg_stat_wal w
+    CROSS JOIN (
+        SELECT
+            count(*) AS basebackup_count,
+            coalesce(sum(backup_streamed), 0) AS basebackup_streamed_bytes,
+            coalesce(sum(backup_total), 0) AS basebackup_total_bytes
+        FROM
+            pg_stat_progress_basebackup) bb
+    CROSS JOIN (
+        SELECT
+            count(*) FILTER (WHERE command = 'COPY TO') AS copy_to_count,
+            coalesce(sum(bytes_processed) FILTER (WHERE command = 'COPY TO'), 0) AS copy_to_bytes_processed
+        FROM
+            pg_stat_progress_copy) cp
+    CROSS JOIN (
+        SELECT
+            count(*) AS pg_dump_count
+        FROM
+            pg_stat_activity
+        WHERE
+            application_name = 'pg_dump') d
+    LEFT JOIN pg_stat_wal_receiver wr ON TRUE;
+
+-- :name active-backups
+-- :command :query
+-- :result :many
+-- :doc Currently running backup operations: streaming base backups
+-- (pg_basebackup) and COPY TO exports (logical dumps, including pg_dump).
+-- One row per active operation; empty when no backup is in progress.
+/* HUG_PSQL_EXTRAS: Currently running backup operations. */
+SELECT
+    'basebackup' AS kind,
+    a.pid,
+    a.usename,
+    a.datname,
+    a.application_name,
+    a.client_addr::text AS client_addr,
+    a.state,
+    b.phase,
+    b.backup_streamed AS bytes_processed,
+    b.backup_total AS bytes_total,
+    NULL::bigint AS tuples_processed,
+    a.query
+FROM
+    pg_stat_progress_basebackup b
+    JOIN pg_stat_activity a ON a.pid = b.pid
+UNION ALL
+SELECT
+    'copy-to' AS kind,
+    a.pid,
+    a.usename,
+    a.datname,
+    a.application_name,
+    a.client_addr::text AS client_addr,
+    a.state,
+    NULL::text AS phase,
+    c.bytes_processed,
+    c.bytes_total,
+    c.tuples_processed,
+    a.query
+FROM
+    pg_stat_progress_copy c
+    JOIN pg_stat_activity a ON a.pid = c.pid
+WHERE
+    c.command = 'COPY TO'
+ORDER BY
+    kind,
+    pid;
+
 -- :name roles
 -- :command :query
 -- :result :many
@@ -420,3 +517,399 @@ FROM
     drift
 ORDER BY
     total_size_bytes DESC;
+
+-- :name obsolete-types
+-- :command :query
+-- :result :many
+-- :doc Columns using obsolete or discouraged data types (money, serial, char,
+-- length-limited varchar, time and timestamp without time zone).
+/* HUG_PSQL_EXTRAS: Columns using obsolete or discouraged data types (money, serial, char, length-limited varchar, time and timestamp without time zone). */
+WITH obsolete AS (
+    SELECT
+        n.nspname AS schema,
+        c.relname AS relname,
+        a.attname AS attname,
+        format_type(a.atttypid, a.atttypmod) AS data_type,
+        CASE WHEN t.typname = 'money' THEN
+            'money'
+        WHEN t.typname = 'bpchar' THEN
+            'char'
+        WHEN t.typname = 'varchar'
+            AND a.atttypmod <> -1 THEN
+            'varchar'
+        WHEN t.typname = 'time' THEN
+            'time'
+        WHEN t.typname = 'timestamp' THEN
+            'timestamp'
+        WHEN t.typname IN ('int2', 'int4', 'int8')
+            AND a.attidentity = ''
+            AND ad.adbin IS NOT NULL
+            AND pg_get_expr(ad.adbin, ad.adrelid) LIKE 'nextval(%' THEN
+            'serial'
+        END AS obsolete_type
+    FROM
+        pg_attribute a
+        INNER JOIN pg_class c ON c.oid = a.attrelid
+        INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+        INNER JOIN pg_type t ON t.oid = a.atttypid
+        LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid
+            AND ad.adnum = a.attnum
+    WHERE
+        a.attnum > 0
+        AND NOT a.attisdropped
+        AND c.relkind IN ('r', 'p', 'm')
+        AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname !~ '^pg_toast'
+        AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)')
+SELECT
+    schema,
+    relname AS table,
+    attname AS column,
+    data_type,
+    obsolete_type,
+    CASE obsolete_type
+        WHEN 'money' THEN
+            'use numeric'
+        WHEN 'char' THEN
+            'use text or varchar'
+        WHEN 'varchar' THEN
+            'use text with a length CHECK'
+        WHEN 'time' THEN
+            'use timetz or timestamptz'
+        WHEN 'timestamp' THEN
+            'use timestamptz'
+        WHEN 'serial' THEN
+            'use GENERATED ... AS IDENTITY'
+    END AS recommendation
+FROM
+    obsolete
+WHERE
+    obsolete_type IS NOT NULL
+ORDER BY
+    schema,
+    relname,
+    attname;
+
+-- :name character-sets-pg14
+-- :command :query
+-- :result :many
+-- :doc Per-database encoding, locale, and collation (PostgreSQL < 15, before
+-- the ICU locale provider and database-level collation version tracking).
+/* HUG_PSQL_EXTRAS: Per-database encoding, locale, and collation (PostgreSQL < 15, before the ICU locale provider and database-level collation version tracking). */
+SELECT
+    d.datname AS database,
+    pg_encoding_to_char(d.encoding) AS encoding,
+    d.datcollate AS lc_collate,
+    d.datctype AS lc_ctype,
+    NULL::text AS collation_provider,
+    NULL::text AS collation_version
+FROM
+    pg_database d
+ORDER BY
+    d.datname;
+
+-- :name character-sets-pg15
+-- :command :query
+-- :result :many
+-- :doc Per-database encoding, locale, and collation (PostgreSQL >= 15).
+/* HUG_PSQL_EXTRAS: Per-database encoding, locale, and collation (PostgreSQL >= 15). */
+SELECT
+    d.datname AS database,
+    pg_encoding_to_char(d.encoding) AS encoding,
+    d.datcollate AS lc_collate,
+    d.datctype AS lc_ctype,
+    CASE d.datlocprovider
+        WHEN 'c' THEN
+            'libc'
+        WHEN 'i' THEN
+            'icu'
+        WHEN 'b' THEN
+            'builtin'
+    END AS collation_provider,
+    d.datcollversion AS collation_version
+FROM
+    pg_database d
+ORDER BY
+    d.datname;
+
+-- :name toast
+-- :command :query
+-- :result :many
+-- :doc TOAST tables with their sizes and the columns eligible for out-of-line storage.
+-- toast_size_bytes is the total TOAST relation (chunk data + index),
+-- toast_data_size_bytes is just the out-of-line chunk storage, and the
+-- main_toast_columns, extended_toast_columns, and external_toast_columns
+-- list every non-PLAIN (toastable) column grouped by storage strategy:
+-- external (never compressed, moved out-of-line when oversized),
+-- extended (compressed, moved out-of-line only if still too large), or main
+-- (kept inline unless the row itself overflows the page).
+/* HUG_PSQL_EXTRAS: TOAST tables with their sizes and the columns eligible for out-of-line storage. */
+SELECT
+    n.nspname AS schema,
+    c.relname AS table,
+    t.relname AS toast_table,
+    pg_total_relation_size(t.oid) AS toast_size_bytes,
+    pg_relation_size(t.oid) AS toast_data_size_bytes,
+    pg_indexes_size(t.oid) AS toast_index_size_bytes,
+    cols.main_toast_columns,
+    cols.extended_toast_columns,
+    cols.external_toast_columns
+FROM
+    pg_class c
+    INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+    INNER JOIN pg_class t ON t.oid = c.reltoastrelid
+    LEFT JOIN LATERAL (
+        SELECT
+            coalesce(string_agg(a.attname, ', ' ORDER BY a.attnum)
+                     FILTER (WHERE a.attstorage = 'm'), '') AS main_toast_columns,
+            coalesce(string_agg(a.attname, ', ' ORDER BY a.attnum)
+                     FILTER (WHERE a.attstorage = 'x'), '') AS extended_toast_columns,
+            coalesce(string_agg(a.attname, ', ' ORDER BY a.attnum)
+                     FILTER (WHERE a.attstorage = 'e'), '') AS external_toast_columns
+        FROM
+            pg_attribute a
+        WHERE
+            a.attrelid = c.oid
+            AND a.attnum > 0
+            AND NOT a.attisdropped
+            AND a.attstorage <> 'p') cols ON TRUE
+WHERE
+    c.relkind IN ('r', 'm')
+    AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND n.nspname !~ '^pg_toast'
+    AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+ORDER BY
+    toast_size_bytes DESC;
+
+-- :name row-level-security
+-- :command :query
+-- :result :many
+-- :doc Row level security (RLS) policies with per-table enablement flags.
+-- One row per policy; tables with RLS enabled but zero policies are not
+-- represented (a locked-down table with no policies is also worth auditing,
+-- but that is a separate signal from a defined policy).
+/* HUG_PSQL_EXTRAS: Row level security (RLS) policies with per-table enablement flags. */
+SELECT
+    n.nspname AS schema,
+    c.relname AS table,
+    p.polname AS policy,
+    CASE p.polcmd
+        WHEN 'r' THEN
+            'SELECT'
+        WHEN 'a' THEN
+            'INSERT'
+        WHEN 'w' THEN
+            'UPDATE'
+        WHEN 'd' THEN
+            'DELETE'
+        WHEN '*' THEN
+            'ALL'
+    END AS command,
+    CASE WHEN p.polpermissive THEN
+        'PERMISSIVE'
+    ELSE
+        'RESTRICTIVE'
+    END AS permissive,
+    array_to_string((
+        SELECT
+            array_agg(CASE WHEN r.role_oid = 0 THEN
+                'public'
+            ELSE
+                pg_get_userbyid(r.role_oid)
+            END
+            ORDER BY r.role_oid)
+        FROM
+            unnest(p.polroles) AS r(role_oid)), ', ') AS roles,
+    pg_get_expr(p.polqual, p.polrelid) AS using_expression,
+    pg_get_expr(p.polwithcheck, p.polrelid) AS with_check_expression,
+    c.relrowsecurity AS rls_enabled,
+    c.relforcerowsecurity AS rls_forced
+FROM
+    pg_policy p
+    INNER JOIN pg_class c ON c.oid = p.polrelid
+    INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE
+    n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND n.nspname !~ '^pg_toast'
+    AND n.nspname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+ORDER BY
+    n.nspname,
+    c.relname,
+    p.polname;
+
+-- :name io-stats-legacy
+-- :command :query
+-- :result :many
+-- :doc Lower-level I/O statistics from pg_stat_io (PostgreSQL 16 and 17).
+-- These versions expose operation counts and an op_bytes multiplier (the
+-- block size) rather than explicit byte volumes.
+/* HUG_PSQL_EXTRAS: Lower-level I/O statistics from pg_stat_io (PostgreSQL 16 and 17). */
+SELECT
+    backend_type,
+    object,
+    context,
+    reads,
+    (reads * op_bytes)::bigint AS read_bytes,
+    read_time,
+    writes,
+    (writes * op_bytes)::bigint AS write_bytes,
+    write_time,
+    writebacks,
+    (writebacks * op_bytes)::bigint AS writeback_bytes,
+    writeback_time,
+    extends,
+    (extends * op_bytes)::bigint AS extend_bytes,
+    extend_time,
+    hits,
+    evictions,
+    reuses,
+    fsyncs,
+    fsync_time,
+    stats_reset
+FROM
+    pg_stat_io
+ORDER BY
+    backend_type,
+    object,
+    context;
+
+-- :name io-stats-pg18
+-- :command :query
+-- :result :many
+-- :doc Lower-level I/O statistics from pg_stat_io (PostgreSQL 18+).
+-- Reads/writes/extends are reported in bytes; writebacks are still counted
+-- in block-size units.
+/* HUG_PSQL_EXTRAS: Lower-level I/O statistics from pg_stat_io (PostgreSQL 18+). */
+SELECT
+    backend_type,
+    object,
+    context,
+    reads,
+    read_bytes::bigint AS read_bytes,
+    read_time,
+    writes,
+    write_bytes::bigint AS write_bytes,
+    write_time,
+    writebacks,
+    (writebacks * current_setting('block_size')::bigint)::bigint AS writeback_bytes,
+    writeback_time,
+    extends,
+    extend_bytes::bigint AS extend_bytes,
+    extend_time,
+    hits,
+    evictions,
+    reuses,
+    fsyncs,
+    fsync_time,
+    stats_reset
+FROM
+    pg_stat_io
+ORDER BY
+    backend_type,
+    object,
+    context;
+
+-- :name hba-file-rules
+-- :command :query
+-- :result :many
+-- :doc Parsed client-authentication (pg_hba.conf) rules from pg_hba_file_rules.
+-- Only rules PostgreSQL could parse are returned. The view is readable only
+-- by superusers, so this query fails with SQLSTATE 42501 for other roles.
+/* HUG_PSQL_EXTRAS: Parsed client-authentication (pg_hba.conf) rules from pg_hba_file_rules. */
+SELECT
+    type,
+    auth_method,
+    address,
+    netmask
+FROM
+    pg_hba_file_rules
+WHERE
+    error IS NULL
+ORDER BY
+    line_number;
+
+-- :name tablespaces
+-- :command :query
+-- :result :many
+-- :doc Tablespaces with owner, filesystem location, size, and options.
+/* HUG_PSQL_EXTRAS: Tablespaces with owner, filesystem location, size, and options. */
+SELECT
+    t.spcname AS tablespace,
+    pg_get_userbyid(t.spcowner) AS owner,
+    pg_tablespace_location(t.oid) AS location,
+    pg_tablespace_size(t.oid) AS size_bytes,
+    array_to_string(t.spcoptions, ', ') AS options
+FROM
+    pg_tablespace t
+ORDER BY
+    t.spcname;
+
+-- :name os-cpu-mem
+-- :command :query
+-- :result :one
+-- :doc Best-effort OS CPU and memory details from Linux /proc files.
+-- Reading files outside the data directory requires superuser (or the
+-- pg_read_server_files role), so this query fails with SQLSTATE 42501 for
+-- other roles and with SQLSTATE 58P01 on non-Linux hosts without /proc.
+/* HUG_PSQL_EXTRAS: Best-effort OS CPU and memory details from Linux /proc files. */
+SELECT
+    pg_read_file('/proc/cpuinfo') AS cpuinfo,
+    pg_read_file('/proc/meminfo') AS meminfo,
+    version() AS version;
+
+-- :name os-disks
+-- :command :query
+-- :result :many
+-- :doc Best-effort OS block devices and sizes from Linux /sys/block.
+-- loop devices are excluded (file-backed, not physical disks). The size
+-- file is reported in 512-byte sectors.
+/* HUG_PSQL_EXTRAS: Best-effort OS block devices and sizes from Linux /sys/block. */
+SELECT
+    b AS device,
+    (pg_read_file('/sys/block/' || b || '/size'))::bigint * 512 AS size_bytes
+FROM
+    pg_ls_dir('/sys/block') AS b
+WHERE
+    b NOT LIKE 'loop%'
+ORDER BY
+    b;
+
+-- :name hot-updates
+-- :command :query
+-- :result :many
+-- :doc Heap-only tuple (HOT) update effectiveness per table.
+-- A low hot_ratio means most updates are not HOT: either an indexed column
+-- is being updated or there is insufficient free space on the page (fillfactor).
+/* HUG_PSQL_EXTRAS: Heap-only tuple (HOT) update effectiveness per table. */
+WITH table_opts AS (
+    SELECT
+        pg_class.oid,
+        relname,
+        nspname,
+        array_to_string(reloptions, '') AS relopts
+    FROM
+        pg_class
+        INNER JOIN pg_namespace ns ON relnamespace = ns.oid
+)
+SELECT
+    table_opts.nspname AS schema,
+    table_opts.relname AS table,
+    psut.n_tup_upd AS updates,
+    psut.n_tup_hot_upd AS hot_updates,
+    CASE WHEN psut.n_tup_upd = 0 THEN
+        NULL
+    ELSE
+        psut.n_tup_hot_upd::float / psut.n_tup_upd::float
+    END AS hot_ratio,
+    CASE WHEN relopts LIKE '%fillfactor=%' THEN
+        substring(relopts, '.*fillfactor=([0-9]+).*')::integer
+    ELSE
+        100
+    END AS fillfactor
+FROM
+    pg_stat_user_tables psut
+    INNER JOIN table_opts ON table_opts.oid = psut.relid
+WHERE
+    psut.schemaname !~ '^(_timescaledb_|timescaledb_(information|experimental)$)'
+ORDER BY
+    (psut.n_tup_upd - psut.n_tup_hot_upd) DESC;

@@ -11,7 +11,8 @@
 
 (def supported-postgres-versions
   "Currently supported PostgreSQL versions."
-  ["14.24.0" "15.19.0" "16.15.0" "17.11.0" "18.6.0"])
+  ;; https://mvnrepository.com/artifact/io.zonky.test.postgres/embedded-postgres-binaries-bom
+  ["14.25.0" "15.20.0" "16.15.0" "17.12.0" "18.7.0", "19.0.0"])
 
 (def latest-postgres-version
   (last supported-postgres-versions))

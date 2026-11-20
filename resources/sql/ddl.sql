@@ -92,6 +92,63 @@ ORDER BY
     c.relname,
     a.attnum;
 
+-- :name ddl-table-columns-for-table
+-- :command :query
+-- :result :many
+-- :doc Columns of a single table (relkind r/p/f), with rendered type/default/identity
+--
+SELECT
+    n.nspname::text AS schema,
+    c.relname::text AS table,
+    c.oid AS table_oid,
+    a.attname::text AS column,
+    a.attnum AS position,
+    pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+    a.attnotnull AS not_null,
+    CASE WHEN a.attidentity = 'a'::"char" THEN
+        'always'::text
+    WHEN a.attidentity = 'd'::"char" THEN
+        'by default'::text
+    ELSE
+        NULL::text
+    END AS identity_kind,
+    CASE WHEN a.attgenerated = 's'::"char" THEN
+        'stored'::text
+    ELSE
+        NULL::text
+    END AS generated_kind,
+    pg_catalog.pg_get_expr(d.adbin, d.adrelid, TRUE) AS default_value,
+    CASE WHEN a.attcollation <> t.typcollation
+        AND a.attcollation <> 0 THEN
+        pg_catalog.quote_ident(cn.nspname) || '.' || pg_catalog.quote_ident(col.collname)
+    ELSE
+        NULL
+    END AS collation,
+    pg_catalog.col_description(c.oid, a.attnum::integer) AS column_comment,
+    CASE WHEN n.nspname ~ '^(pg_|_timescaledb_|timescaledb_(information|experimental)$)'::text
+        OR n.nspname = 'information_schema'::name THEN
+        TRUE
+    ELSE
+        FALSE
+    END AS system_object
+FROM
+    pg_catalog.pg_attribute a
+    JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+    LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid
+        AND d.adnum = a.attnum
+    LEFT JOIN pg_catalog.pg_collation col ON col.oid = a.attcollation
+    LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid = col.collnamespace
+WHERE
+    n.nspname = :v:schema
+    AND c.relname = :v:table
+    AND a.attnum > 0
+    AND c.relkind IN ('r', 'p', 'f')
+    AND NOT c.relispartition
+ORDER BY
+    a.attnum;
+
 -- :name ddl-table-options
 -- :command :query
 -- :result :many

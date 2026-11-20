@@ -14,7 +14,8 @@
    [clojure.string :as str]
    [clojure.tools.logging :as log]
    [hugsql.core :as hugsql])
-  (:import [org.postgresql.util PSQLException]))
+  (:import [java.net InetAddress]
+           [org.postgresql.util PSQLException]))
 
 ;;;
 ;;; Utils
@@ -93,16 +94,30 @@
          unused-tables
 
          ;; postgres_native.sql
+         active-backups
          autovacuum-disabled
+         backups
          bgwriter-stats-legacy
          bgwriter-stats-pg17
+         character-sets-pg14
+         character-sets-pg15
          database-stats
+         obsolete-types
+         hba-file-rules
+         hot-updates
          idle-in-transaction
+         io-stats-legacy
+         io-stats-pg18
+         os-cpu-mem
+         os-disks
          replication-stats
          roles
+         row-level-security
          sequence-origin
          stats-collector-drift-raw
          tables-without-primary-key
+         tablespaces
+         toast
          unindexed-foreign-keys
          unlogged-tables
          wal-archiver
@@ -110,6 +125,7 @@
 
          ;; ddl.sql
          ddl-table-columns
+         ddl-table-columns-for-table
          ddl-table-options
          ddl-table-constraints
          ddl-index-defs
@@ -155,6 +171,35 @@
     (bgwriter-stats-pg17 db)
     (bgwriter-stats-legacy db)))
 
+(defn character-sets
+  "Per-database encoding, locale, and collation.
+  Returns one map per database with :database, :encoding, :lc_collate,
+  :lc_ctype, :collation_provider (nil on PostgreSQL < 15), and
+  :collation_version."
+  [db]
+  (if (>= (pg-version-num db) 150000)
+    (character-sets-pg15 db)
+    (character-sets-pg14 db)))
+
+(defn io-stats
+  "Lower-level I/O statistics from pg_stat_io (PostgreSQL 16+).
+
+  Returns one row per backend_type/object/context with read, write,
+  writeback, and extend operation counts, byte volumes, and time spent in
+  milliseconds.
+
+  Byte volumes are normalized to bytes across versions:
+  - PostgreSQL 16 and 17 expose operation counts and an op_bytes multiplier
+    (the block size) rather than explicit byte volumes.
+  - PostgreSQL 18+ reports bytes directly, except writebacks, which are
+    still counted in block-size units.
+
+  Not available before PostgreSQL 16 (pg_stat_io does not exist)."
+  [db]
+  (if (>= (pg-version-num db) 180000)
+    (io-stats-pg18 db)
+    (io-stats-legacy db)))
+
 (defn stats-collector-drift
   "Row-count drift between the planner estimate (reltuples)
   and the statistics collector (n_live_tup).
@@ -166,6 +211,122 @@
     (if include-system-objects?
       rows
       (vec (remove :system_object rows)))))
+
+(defn- netmask->prefix-len
+  "Number of leading 1-bits in an IPv4 or IPv6 netmask string."
+  [netmask]
+  (let [bytes (.getAddress (InetAddress/getByName netmask))]
+    (loop [i 0 bits 0]
+      (if (>= i (alength bytes))
+        bits
+        (let [b (aget bytes i)]
+          (if (= (byte -1) b)
+            (recur (inc i) (+ bits 8))
+            (+ bits (Integer/bitCount (int (bit-and 0xFF b))))))))))
+
+(defn- ip-range->cidr
+  "Combine an IP address and netmask into CIDR notation, e.g.
+  \"127.0.0.1\" and \"255.0.0.0\" => \"127.0.0.1/8\"."
+  [address netmask]
+  (str address "/" (netmask->prefix-len netmask)))
+
+(defn hba-security-stance
+  "High-level HBA (client authentication) security stance from pg_hba_file_rules.
+
+  Returns a single map:
+    :trust-rule-count               - number of rules using 'trust' auth
+    :deprecated-password-rule-count - number of rules using 'password' or 'md5'
+                                      auth (upgrade to scram-sha-256)
+    :open-ip-ranges                 - set of CIDR strings for host-based rules
+
+  pg_hba_file_rules is readable only by superusers, so this returns {} when
+  the view is not accessible."
+  [db]
+  (try
+    (let [rows       (hba-file-rules db)
+          host?      #(str/starts-with? (:type %) "host")
+          trust?     #(= "trust" (:auth_method %))
+          deprecated? #(contains? #{"password" "md5"} (:auth_method %))]
+      {:trust-rule-count               (count (filter trust? rows))
+       :deprecated-password-rule-count (count (filter deprecated? rows))
+       :open-ip-ranges                 (->> rows
+                                            (filter host?)
+                                            (keep (fn [{:keys [address netmask]}]
+                                                    (when (and address netmask)
+                                                      (ip-range->cidr address netmask))))
+                                            (into #{}))})
+    (catch PSQLException e
+      (if (= "42501" (.getSQLState e))
+        (do (log/warn (format-psql-exc e)) {})
+        (throw e)))))
+
+(defn- cpuinfo-field
+  "Value of a colon-delimited field within one /proc/cpuinfo block, e.g.
+  (cpuinfo-field block \"cpu cores\") => \"8\"."
+  [block field]
+  (some (fn [line]
+          (when-let [[_ v] (re-matches (re-pattern (str field "\\s*:\\s*(.*)")) line)]
+            (str/trim v)))
+        (str/split-lines block)))
+
+(defn- cpuinfo->cores
+  "Physical CPU core count from /proc/cpuinfo text.
+  Uses the per-socket `cpu cores` field times the number of sockets when
+  available; falls back to the number of processor blocks (logical CPUs)."
+  [cpuinfo]
+  (let [blocks (->> (str/split cpuinfo #"\n\s*\n")
+                    (remove str/blank?))]
+    (if-let [cores (->> blocks
+                        (keep #(some-> (cpuinfo-field % "cpu cores") parse-long))
+                        not-empty)]
+      (let [sockets (->> blocks
+                         (keep #(cpuinfo-field % "physical id"))
+                         distinct
+                         count)]
+        (* (apply max cores) (max 1 sockets)))
+      (count blocks))))
+
+(defn- meminfo->total-bytes
+  "Total physical memory in bytes from /proc/meminfo text (MemTotal is in kB)."
+  [meminfo]
+  (when-let [line (some #(when (str/starts-with? % "MemTotal:")
+                          %)
+                        (str/split-lines meminfo))]
+    (let [kb (parse-long (-> (second (str/split line #":"))
+                             (str/replace #"kB" "")
+                             str/trim))]
+      (* kb 1024))))
+
+(defn- version->arch
+  "CPU architecture from the PostgreSQL version string, e.g.
+  \"PostgreSQL 18.6 on x86_64-pc-linux-gnu, ...\" => \"x86_64\"."
+  [version]
+  (second (re-find #" on ([A-Za-z0-9_]+)-" version)))
+
+(defn compute-resources
+  "Best-effort OS-level compute resources from Linux /proc and /sys.
+
+  Returns a single map:
+    :cpu-cores        - physical CPU core count (logical CPUs if unknown)
+    :cpu-architecture - e.g. \"x86_64\"
+    :memory-bytes     - total physical memory in bytes
+    :disks            - vector of {:device name :size_bytes n}
+
+  Reading these files requires superuser (or pg_read_server_files), so this
+  returns {} when they are not accessible (SQLSTATE 42501) or when the Linux
+  pseudo-files are absent (SQLSTATE 58P01)."
+  [db]
+  (try
+    (let [{:keys [cpuinfo meminfo version]} (os-cpu-mem db)
+          disks (os-disks db)]
+      {:cpu-cores        (cpuinfo->cores cpuinfo)
+       :cpu-architecture (version->arch version)
+       :memory-bytes     (meminfo->total-bytes meminfo)
+       :disks            disks})
+    (catch PSQLException e
+      (if (contains? #{"42501" "58P01"} (.getSQLState e))
+        (do (log/warn (format-psql-exc e)) {})
+        (throw e)))))
 
 ;;;
 ;;; Stats
@@ -258,16 +419,16 @@
   "List all foreign key relationships as ERD-ready edges.
 
   Each map describes one foreign key constraint:
-    :constraint          — name of the foreign key constraint
-    :schema, :table      — referencing side
-    :columns             — referencing columns, in constraint order
+    :constraint          - name of the foreign key constraint
+    :schema, :table      - referencing side
+    :columns             - referencing columns, in constraint order
     :foreign_schema,
-    :foreign_table       — referenced side
-    :foreign_columns     — referenced columns, parallel to :columns
-    :delete_action       — ON DELETE action (NO ACTION, RESTRICT,
+    :foreign_table       - referenced side
+    :foreign_columns     - referenced columns, parallel to :columns
+    :delete_action       - ON DELETE action (NO ACTION, RESTRICT,
                            CASCADE, SET NULL, SET DEFAULT)
-    :update_action       — ON UPDATE action
-    :match_type          — MATCH type (SIMPLE, FULL, PARTIAL)
+    :update_action       - ON UPDATE action
+    :match_type          - MATCH type (SIMPLE, FULL, PARTIAL)
     :deferrable,
     :initially_deferred,
     :validated
@@ -303,6 +464,20 @@
       rels
       (vec (remove :system_object rels)))))
 
+(defn rules
+  "List all rewrite rules (CREATE RULE) defined on tables and views
+  in the current database. Internal _RETURN rules that back views are
+  excluded.
+
+  Each map describes one rule:
+    :schema        - schema containing the target table/view
+    :table         - target table/view name
+    :rule          - rule name
+    :definition    - CREATE RULE definition from pg_get_ruledef
+    :system_object - true for pg_catalog/information_schema/TimescaleDB objects"
+  [db]
+  (ddl-rule-defs db))
+
 (defn read-data-dictionary
   "Create a data dictionary summarizing all major objects
   in your PostgreSQL database. Respects SQL COMMENTS,
@@ -319,6 +494,7 @@
             :functions          (functions db)
             :indexes            (indexes db)
             :key-relationships  (key-relationships db :include-system-objects? include-system-objects?)
+            :rules              (rules db)
             :schemas            (schemas db)
             :tables             (tables db)
             :triggers           (triggers db)
@@ -337,9 +513,10 @@
   "Defines the critical queries and their cutoffs for the `diagnose`
   function. The value is a map containing a predicate fn (true = pass)
   to test against each result, and a description of the problem if false."
-  {:duplicate-indexes {:pred    #(identity %)
+  {:duplicate-indexes {:pred    (constantly false)
                        :onfalse "Duplicate indexes detected"
-                       :idfn    #(identity %)}
+                       :idfn    (fn [{:keys [idx1 idx2]}]
+                                  (str idx1 " duplicates " idx2))}
    :bloat             {:pred    #(< (:bloat %) 10)
                        :onfalse "Bloated tables"
                        :idfn    #(str (:schema %) "." (:object_name %))}
