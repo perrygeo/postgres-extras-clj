@@ -183,9 +183,9 @@ Read-only diagnostics over PostgreSQL system catalogs.
 
 To get a full map of diagnostic stats, use `(read-stats db)` which
 returns a map, with keywords mirroring the table above. The instance-level
-views — `replication-lag`, `wal-stats`, `wal-archiver`, `bgwriter-stats`,
-`backups`, and `active-backups` — are standalone functions (not part of
-`read-stats`).
+views (`replication-lag`, `wal-stats`, `wal-archiver`, `bgwriter-stats`,
+`backups`, and `active-backups`) are standalone functions not part of
+`read-stats`.
 
 Diagnostic queries exclude postgres schemas
 `pg_catalog`, `information_schema`, `pg_toast*`,
@@ -384,8 +384,6 @@ notebook:render   Render examples/pgbench_tutorial.clj to target/clay with Clay 
 notebook:copy     Copy the rendered notebook artifacts from target/clay into doc/
 notebook:publish  Commit doc/ to the ghpages branch and push to origin
 notebook          Full pipeline: db:up -> db:pgbench -> render -> copy -> publish to ghpages
-release:bump      Bump version files only (README.md, pom.xml, CHANGELOG.md) — no commit, tag, or push. bb release:bump 0.2.22
-release           Cut a release: bump version files, commit, tag v<version>, and push (bb release 0.2.22 [--no-push])
 jar               Build the JAR. Version = git tag at HEAD (untagged => 0.0.0-SNAPSHOT)
 publish           Deploy the JAR to Clojars (requires CLOJARS_USERNAME / CLOJARS_PASSWORD)
 ```
