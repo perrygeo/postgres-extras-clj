@@ -741,8 +741,8 @@ ORDER BY
 -- :command :query
 -- :result :many
 -- :doc Lower-level I/O statistics from pg_stat_io (PostgreSQL 16 and 17).
--- read/write/extend/writeback byte volumes are derived from the op_bytes
--- multiplier, which is always the block size on these versions.
+-- These versions expose operation counts and an op_bytes multiplier (the
+-- block size) rather than explicit byte volumes.
 /* HUG_PSQL_EXTRAS: Lower-level I/O statistics from pg_stat_io (PostgreSQL 16 and 17). */
 SELECT
     backend_type,
@@ -777,8 +777,8 @@ ORDER BY
 -- :command :query
 -- :result :many
 -- :doc Lower-level I/O statistics from pg_stat_io (PostgreSQL 18+).
--- reads/writes/extends report explicit byte-level columns; writebacks are
--- still counted in BLCKSZ units and are converted to bytes here.
+-- Reads/writes/extends are reported in bytes; writebacks are still counted
+-- in block-size units.
 /* HUG_PSQL_EXTRAS: Lower-level I/O statistics from pg_stat_io (PostgreSQL 18+). */
 SELECT
     backend_type,
@@ -813,9 +813,8 @@ ORDER BY
 -- :command :query
 -- :result :many
 -- :doc Parsed client-authentication (pg_hba.conf) rules from pg_hba_file_rules.
--- Only successfully parsed rules are returned (error IS NULL). The view is
--- readable only by superusers, so this query fails with SQLSTATE 42501 for
--- other roles.
+-- Only rules PostgreSQL could parse are returned. The view is readable only
+-- by superusers, so this query fails with SQLSTATE 42501 for other roles.
 /* HUG_PSQL_EXTRAS: Parsed client-authentication (pg_hba.conf) rules from pg_hba_file_rules. */
 SELECT
     type,
@@ -863,7 +862,7 @@ SELECT
 -- :result :many
 -- :doc Best-effort OS block devices and sizes from Linux /sys/block.
 -- loop devices are excluded (file-backed, not physical disks). The size
--- file is reported in 512-byte sectors, so it is converted to bytes.
+-- file is reported in 512-byte sectors.
 /* HUG_PSQL_EXTRAS: Best-effort OS block devices and sizes from Linux /sys/block. */
 SELECT
     b AS device,
