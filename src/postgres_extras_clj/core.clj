@@ -125,6 +125,7 @@
 
          ;; ddl.sql
          ddl-table-columns
+         ddl-table-columns-for-table
          ddl-table-options
          ddl-table-constraints
          ddl-index-defs
