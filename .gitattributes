@@ -1,0 +1,7 @@
+# GitHub Linguist overrides.
+#
+# Linguist classifies "SQL" as a data language, so .sql files are excluded
+# from the repo's language breakdown entirely. Our queries are PostgreSQL
+# SQL, so map them to PLpgSQL (a programming language) so they are counted
+# as a top-level language.
+resources/sql/*.sql linguist-language=PLpgSQL
